@@ -224,6 +224,9 @@ Enforces:
 - repeated action and repeated diff thresholds.
 
 Budget exhaustion produces a terminal failure with the exact exhausted resource.
+`max_total_tokens` is optional. When it is configured, every model phase must
+return provider usage; missing usage terminates with `usage_unavailable` rather
+than silently disabling the budget.
 
 ### 5.7 `RunStore`
 
@@ -241,8 +244,9 @@ Persists:
   report.md
 ```
 
-State snapshots use temporary files followed by atomic replacement.
-`events.jsonl` is append-only.
+The run directory is rooted in the original repository, not the disposable
+worktree, so it survives worktree cleanup. State snapshots use temporary files
+followed by atomic replacement. `events.jsonl` is append-only.
 
 ### 5.8 `WorkspaceManager`
 
@@ -264,7 +268,14 @@ class RepoTaskSpec(BaseModel):
 ```
 
 `verify_command` must be a non-empty argv. Shell metacharacter interpretation is
-not supported because execution never uses a shell.
+not supported because execution never uses a shell. The first release accepts
+`pytest ...`, `py.test ...`, or `<python-executable> -m pytest ...`; wrapper
+commands such as `uv run` are outside the initial contract.
+
+When `allowed_paths` is `None`, writes may target any path inside the isolated
+worktree except OpenHarness built-in sensitive paths, `.git`, and the RepoPilot
+run-artifact directory. A provided list further narrows this set using
+repository-relative glob patterns.
 
 ### 6.2 Analysis and plan
 
@@ -279,7 +290,7 @@ class AnalysisResult(BaseModel):
     suspected_files: list[str]
     root_cause: str
     evidence: list[CodeEvidence]
-    affected_symbols: list[str] = []
+    affected_symbols: list[str] = Field(default_factory=list)
     confidence: float
 
 class PlanStep(BaseModel):
@@ -311,7 +322,7 @@ class ObservationRecord(BaseModel):
     status: Literal["success", "failure", "blocked"]
     summary: str
     raw_artifact_path: str | None = None
-    metadata: dict[str, object] = {}
+    metadata: dict[str, object] = Field(default_factory=dict)
     failure_signature: str | None = None
 ```
 
@@ -420,15 +431,21 @@ Each task has:
 
 The same model, task, initial commit, verification, and budget are used for:
 
-- baseline: native OpenHarness ReAct;
+- baseline: native OpenHarness ReAct with its normal tool registry and a prompt
+  containing the same verification command;
 - candidate: RepoPilot scheduler.
+
+The baseline may choose how and when to invoke its normal shell tool. That is an
+intentional part of the comparison: RepoPilot replaces model-controlled
+verification with scheduler-controlled verification. Both strategies are judged
+afterward by the same evaluation-only regression command.
 
 Reports include:
 
 - verified completion rate;
 - evaluation-only regression pass rate;
 - model phase calls;
-- token usage when available;
+- token usage, or an explicit `unavailable` value when the provider omits usage;
 - wall-clock time;
 - repair recovery rate;
 - repeated action count;
