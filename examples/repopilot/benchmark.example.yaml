@@ -1,0 +1,4 @@
+name: discount-boundary-smoke
+cases:
+  - id: full-discount-boundary
+    task: task.example.yaml

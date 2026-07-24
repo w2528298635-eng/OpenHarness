@@ -4,7 +4,7 @@ from .models import Phase
 from openharness.tools.base import ToolRegistry
 
 _READ_TOOLS = {"read_file", "glob", "grep"}
-_WRITE_TOOLS = _READ_TOOLS | {"file_edit", "file_write"}
+_WRITE_TOOLS = _READ_TOOLS | {"edit_file", "write_file"}
 
 
 class ScopedToolRegistry(ToolRegistry):
@@ -19,6 +19,6 @@ class ScopedToolRegistry(ToolRegistry):
             names = set()
         lsp_allowed = phase in {Phase.ANALYZE, Phase.REPLAN, Phase.EXECUTE, Phase.REPAIR}
         for tool in source.list_tools():
-            if tool.name in names or (lsp_allowed and tool.name.startswith("lsp_")):
+            if tool.name in names or (lsp_allowed and tool.name == "lsp"):
                 registry.register(tool)
         return registry

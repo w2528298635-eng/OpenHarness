@@ -771,6 +771,7 @@ provider_app = typer.Typer(name="provider", help="Manage provider profiles")
 config_app = typer.Typer(name="config", help="Show or update settings")
 cron_app = typer.Typer(name="cron", help="Manage cron scheduler and jobs")
 autopilot_app = typer.Typer(name="autopilot", help="Manage repo autopilot")
+from openharness.repopilot.cli import repopilot_app
 
 app.add_typer(mcp_app)
 app.add_typer(plugin_app)
@@ -779,6 +780,7 @@ app.add_typer(provider_app)
 app.add_typer(config_app)
 app.add_typer(cron_app)
 app.add_typer(autopilot_app)
+app.add_typer(repopilot_app)
 
 
 # ---- mcp subcommands ----
