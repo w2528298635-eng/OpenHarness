@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from openharness.config.paths import get_config_dir
 from openharness.config.settings import load_settings
@@ -36,7 +36,10 @@ def get_user_skills_dir() -> Path:
 
 def get_user_skill_dirs() -> list[Path]:
     """Return user-level skill directories loaded by default."""
-    return [get_user_skills_dir(), *(Path.home().joinpath(*parts) for parts in _USER_COMPAT_SKILL_DIRS)]
+    return [
+        get_user_skills_dir(),
+        *(Path.home().joinpath(*parts) for parts in _USER_COMPAT_SKILL_DIRS),
+    ]
 
 
 def load_skill_registry(
@@ -77,7 +80,10 @@ def load_skill_registry(
 
 def load_user_skills() -> list[SkillDefinition]:
     """Load markdown skills from user-level OpenHarness and compatibility directories."""
-    return load_skills_from_dirs(get_user_skill_dirs(), source="user")
+    directories = get_user_skill_dirs()
+    skills = load_skills_from_dirs(directories[:1], source="user")
+    skills.extend(load_skills_from_dirs(directories[1:], source="user", create_missing=False))
+    return skills
 
 
 def discover_project_skill_dirs(

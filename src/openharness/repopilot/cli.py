@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
@@ -33,19 +34,17 @@ def _scheduler(repo: Path, verify_timeout: float = 300) -> RepoPilotScheduler:
 def _task_or_bad_parameter(task_file: Path):
     try:
         return load_task(task_file)
-    except (OSError, ValueError) as exc:
+    except (OSError, TypeError, ValueError) as exc:
         raise typer.BadParameter(str(exc), param_hint="task") from exc
 
 
 @repopilot_app.command("run")
 def run_command(
-    task: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
+    task: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
 ) -> None:
     """Start a repair from a YAML task specification."""
     spec = _task_or_bad_parameter(task)
-    state = asyncio.run(
-        _scheduler(spec.repo_path, spec.budgets.verify_timeout_seconds).start(spec)
-    )
+    state = asyncio.run(_scheduler(spec.repo_path, spec.budgets.verify_timeout_seconds).start(spec))
     typer.echo(f"run_id: {state.run_id}")
     typer.echo(f"phase: {state.phase.value}")
     typer.echo(f"reason: {state.terminal_reason or 'verified'}")
@@ -57,22 +56,23 @@ def run_command(
 @repopilot_app.command("show")
 def show_command(
     run_id: str,
-    repo: Path = typer.Option(Path.cwd(), "--repo", help="Original repository path."),
+    repo: Annotated[Path | None, typer.Option("--repo", help="Original repository path.")] = None,
 ) -> None:
     """Print durable run state as JSON."""
-    state = RunStore(repo).load_state(run_id)
+    state = RunStore(repo or Path.cwd()).load_state(run_id)
     typer.echo(state.model_dump_json(indent=2))
 
 
 @repopilot_app.command("resume")
 def resume_command(
     run_id: str,
-    repo: Path = typer.Option(Path.cwd(), "--repo", help="Original repository path."),
+    repo: Annotated[Path | None, typer.Option("--repo", help="Original repository path.")] = None,
 ) -> None:
     """Continue a non-terminal run from its last checkpoint."""
-    store = RunStore(repo)
+    repo_path = repo or Path.cwd()
+    store = RunStore(repo_path)
     state = store.load_state(run_id)
-    scheduler = _scheduler(repo, state.task.budgets.verify_timeout_seconds)
+    scheduler = _scheduler(repo_path, state.task.budgets.verify_timeout_seconds)
     state = asyncio.run(scheduler.resume(run_id))
     typer.echo(f"run_id: {state.run_id}")
     typer.echo(f"phase: {state.phase.value}")
@@ -83,10 +83,10 @@ def resume_command(
 @repopilot_app.command("report")
 def report_command(
     run_id: str,
-    repo: Path = typer.Option(Path.cwd(), "--repo", help="Original repository path."),
+    repo: Annotated[Path | None, typer.Option("--repo", help="Original repository path.")] = None,
 ) -> None:
     """Print the saved Markdown report."""
-    report = RunStore(repo).run_dir(run_id) / "report.md"
+    report = RunStore(repo or Path.cwd()).run_dir(run_id) / "report.md"
     if not report.exists():
         raise typer.BadParameter(f"report does not exist: {report}")
     typer.echo(report.read_text(encoding="utf-8"))
@@ -94,7 +94,7 @@ def report_command(
 
 @repopilot_app.command("benchmark")
 def benchmark_command(
-    manifest: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
+    manifest: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
 ) -> None:
     """Run every RepoPilot case and print measured JSON results."""
     benchmark = load_benchmark(manifest)

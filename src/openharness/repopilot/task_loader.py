@@ -19,14 +19,10 @@ def validate_verify_command(argv: list[str]) -> list[str]:
     executable = Path(argv[0]).name.lower()
     direct = executable in {"pytest", "pytest.exe", "py.test", "py.test.exe"}
     python_module = (
-        executable.startswith("python")
-        and len(argv) >= 3
-        and argv[1:3] == ["-m", "pytest"]
+        executable.startswith("python") and len(argv) >= 3 and argv[1:3] == ["-m", "pytest"]
     )
     if not (direct or python_module):
-        raise ValueError(
-            "verify_command must start with pytest, py.test, or <python> -m pytest"
-        )
+        raise ValueError("verify_command must start with pytest, py.test, or <python> -m pytest")
     return list(argv)
 
 
@@ -34,10 +30,10 @@ def load_task(path: Path) -> RepoTaskSpec:
     task_path = path.expanduser().resolve()
     payload = yaml.safe_load(task_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
-        raise ValueError("task YAML must contain a mapping")
+        raise TypeError("task YAML must contain a mapping")
     repo_value = payload.get("repo_path")
     if not isinstance(repo_value, str):
-        raise ValueError("repo_path must be a string")
+        raise TypeError("repo_path must be a string")
     repo_path = Path(repo_value).expanduser()
     if not repo_path.is_absolute():
         repo_path = task_path.parent / repo_path

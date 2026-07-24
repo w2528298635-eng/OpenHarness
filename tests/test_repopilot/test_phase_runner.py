@@ -5,11 +5,14 @@ import pytest
 
 from openharness.api.usage import UsageSnapshot
 from openharness.engine.messages import ConversationMessage, TextBlock
-from openharness.engine.stream_events import AssistantTurnComplete, ToolExecutionCompleted, ToolExecutionStarted
+from openharness.engine.stream_events import (
+    AssistantTurnComplete,
+    ToolExecutionCompleted,
+    ToolExecutionStarted,
+)
 from openharness.repopilot.models import Phase, RepoRunState, RepoTaskSpec
 from openharness.repopilot.phase_runner import OpenHarnessPhaseRunner
 from openharness.tools.base import ToolRegistry
-
 
 ANALYSIS_JSON = (
     '{"suspected_files":["app.py"],"root_cause":"off by one",'

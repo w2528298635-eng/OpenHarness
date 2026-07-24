@@ -11,10 +11,16 @@ from openharness.swarm.worktree import WorktreeManager
 
 class WorkspaceManager:
     def __init__(self, worktrees: Any | None = None):
-        self.worktrees = worktrees or WorktreeManager()
+        self.worktrees = worktrees
 
     async def create(self, repo_path: Path, run_id: str):
-        return await self.worktrees.create_worktree(
+        manager = self.worktrees
+        if manager is None:
+            manager = WorktreeManager(
+                repo_path.resolve().parent / ".openharness-repopilot-worktrees" / repo_path.name
+            )
+            self.worktrees = manager
+        return await manager.create_worktree(
             repo_path.resolve(),
             run_id,
             branch=f"repopilot/{run_id}",
@@ -38,9 +44,7 @@ class WorkspaceManager:
         return await self._git(worktree, "diff", "--binary", "--no-ext-diff")
 
     async def changed_files(self, worktree: Path) -> list[str]:
-        output = await self._git(
-            worktree, "status", "--porcelain=v1", "--untracked-files=all"
-        )
+        output = await self._git(worktree, "status", "--porcelain=v1", "--untracked-files=all")
         result: list[str] = []
         for line in output.splitlines():
             path = line[3:]

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Protocol
+from typing import Any, Protocol
 from uuid import uuid4
 
 from pydantic import BaseModel, ValidationError
@@ -48,7 +49,7 @@ def _extract_json(text: str) -> dict[str, Any]:
             stripped = stripped[start : end + 1]
     value = json.loads(stripped)
     if not isinstance(value, dict):
-        raise ValueError("phase output must be a JSON object")
+        raise TypeError("phase output must be a JSON object")
     return value
 
 
@@ -124,9 +125,7 @@ class OpenHarnessPhaseRunner:
                         )
                     )
                 elif isinstance(event, ToolExecutionCompleted):
-                    action_id = (
-                        pending_action_ids.pop(0) if pending_action_ids else uuid4().hex
-                    )
+                    action_id = pending_action_ids.pop(0) if pending_action_ids else uuid4().hex
                     observations.append(
                         ObservationRecord(
                             action_id=action_id,
@@ -159,7 +158,7 @@ class OpenHarnessPhaseRunner:
                     actions=actions,
                     observations=observations,
                 )
-            except (ValueError, json.JSONDecodeError, ValidationError):
+            except (TypeError, ValueError, json.JSONDecodeError, ValidationError):
                 if output_attempt == 1:
                     raise ValueError(f"invalid structured output for {phase.value}")
         raise AssertionError("unreachable")

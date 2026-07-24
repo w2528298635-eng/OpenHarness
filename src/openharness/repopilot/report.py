@@ -10,8 +10,7 @@ def render_report(state: RepoRunState, run_dir: Path) -> str:
     outcome = state.terminal_reason or state.phase.value
     changed = "\n".join(f"- `{path}`" for path in state.changed_files) or "- 无"
     verification = (
-        f"{latest.category}（exit_code={latest.exit_code}，"
-        f"耗时={latest.duration_seconds:.2f}s）"
+        f"{latest.category}（exit_code={latest.exit_code}，耗时={latest.duration_seconds:.2f}s）"
         if latest
         else "尚未执行"
     )

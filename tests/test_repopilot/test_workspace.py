@@ -38,3 +38,20 @@ def test_changed_path_policy_rejects_sensitive_and_out_of_scope(tmp_path: Path) 
 def test_diff_signature_is_stable() -> None:
     workspace = WorkspaceManager(FakeWorktrees())
     assert workspace.diff_signature("same diff") == workspace.diff_signature("same diff")
+
+
+@pytest.mark.asyncio
+async def test_default_worktree_storage_is_next_to_repository(tmp_path: Path, monkeypatch) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    captured = {}
+
+    class RecordingManager(FakeWorktrees):
+        def __init__(self, base_dir):
+            captured["base_dir"] = base_dir
+
+    monkeypatch.setattr("openharness.repopilot.workspace.WorktreeManager", RecordingManager)
+    workspace = WorkspaceManager()
+    await workspace.create(repo, "run-1")
+
+    assert captured["base_dir"] == tmp_path / ".openharness-repopilot-worktrees" / "repo"

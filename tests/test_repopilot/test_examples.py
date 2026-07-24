@@ -15,7 +15,16 @@ def test_discount_example_is_reproducible_and_manifests_load(tmp_path: Path) -> 
     subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
     subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
     subprocess.run(
-        ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "baseline"],
+        [
+            "git",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-m",
+            "baseline",
+        ],
         cwd=repo,
         check=True,
         capture_output=True,
@@ -26,10 +35,12 @@ def test_discount_example_is_reproducible_and_manifests_load(tmp_path: Path) -> 
         cwd=repo,
         capture_output=True,
         text=True,
+        check=False,
     )
 
     assert result.returncode == 1
     assert load_task(target / "task.example.yaml").repo_path == repo.resolve()
-    assert load_benchmark(target / "benchmark.example.yaml").cases[0].task == (
-        target / "task.example.yaml"
-    ).resolve()
+    assert (
+        load_benchmark(target / "benchmark.example.yaml").cases[0].task
+        == (target / "task.example.yaml").resolve()
+    )

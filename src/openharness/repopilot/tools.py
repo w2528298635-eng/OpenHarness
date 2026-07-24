@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from .models import Phase
 from openharness.tools.base import ToolRegistry
+
+from .models import Phase
 
 _READ_TOOLS = {"read_file", "glob", "grep"}
 _WRITE_TOOLS = _READ_TOOLS | {"edit_file", "write_file"}
@@ -9,7 +10,7 @@ _WRITE_TOOLS = _READ_TOOLS | {"edit_file", "write_file"}
 
 class ScopedToolRegistry(ToolRegistry):
     @classmethod
-    def from_registry(cls, source: ToolRegistry, phase: Phase) -> "ScopedToolRegistry":
+    def from_registry(cls, source: ToolRegistry, phase: Phase) -> ScopedToolRegistry:
         registry = cls()
         if phase in {Phase.ANALYZE, Phase.REPLAN}:
             names = _READ_TOOLS

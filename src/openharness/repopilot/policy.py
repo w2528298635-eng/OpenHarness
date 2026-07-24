@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import ClassVar
 
 from .models import Phase, RepoRunState, TransitionDecision, VerificationResult
 
@@ -8,9 +9,7 @@ from .models import Phase, RepoRunState, TransitionDecision, VerificationResult
 class TransitionPolicy:
     def after_precheck(self, result: VerificationResult) -> TransitionDecision:
         if result.passed:
-            return TransitionDecision(
-                next_phase=Phase.FAILED, terminal_reason="bug_not_reproduced"
-            )
+            return TransitionDecision(next_phase=Phase.FAILED, terminal_reason="bug_not_reproduced")
         if result.category == "test_failure":
             return TransitionDecision(next_phase=Phase.ANALYZE)
         return TransitionDecision(
@@ -31,9 +30,7 @@ class TransitionPolicy:
             )
         return TransitionDecision(next_phase=Phase.VERIFY if has_diff else Phase.REPLAN)
 
-    def after_verify(
-        self, state: RepoRunState, result: VerificationResult
-    ) -> TransitionDecision:
+    def after_verify(self, state: RepoRunState, result: VerificationResult) -> TransitionDecision:
         if result.passed:
             return TransitionDecision(next_phase=Phase.COMPLETE)
         if result.category in {"missing_executable", "infrastructure_error", "timeout"}:
@@ -44,17 +41,11 @@ class TransitionPolicy:
         signatures = state.failure_signatures + (
             [result.failure_signature] if result.failure_signature else []
         )
-        if (
-            result.failure_signature
-            and len(signatures) >= 2
-            and signatures[-1] == signatures[-2]
-        ):
+        if result.failure_signature and len(signatures) >= 2 and signatures[-1] == signatures[-2]:
             return TransitionDecision(next_phase=Phase.REPLAN)
         return TransitionDecision(next_phase=Phase.REPAIR)
 
-    def after_repair(
-        self, state: RepoRunState, *, diff_changed: bool
-    ) -> TransitionDecision:
+    def after_repair(self, state: RepoRunState, *, diff_changed: bool) -> TransitionDecision:
         del state
         return TransitionDecision(next_phase=Phase.VERIFY if diff_changed else Phase.REPLAN)
 
@@ -66,7 +57,13 @@ class TransitionPolicy:
 
 
 class BudgetController:
-    _MODEL_PHASES = {Phase.ANALYZE, Phase.PLAN, Phase.EXECUTE, Phase.REPAIR, Phase.REPLAN}
+    _MODEL_PHASES: ClassVar[set[Phase]] = {
+        Phase.ANALYZE,
+        Phase.PLAN,
+        Phase.EXECUTE,
+        Phase.REPAIR,
+        Phase.REPLAN,
+    }
 
     def check(
         self,
@@ -78,7 +75,7 @@ class BudgetController:
     ) -> TransitionDecision:
         limits = state.task.budgets
         usage = state.budgets
-        current = now or datetime.now(timezone.utc)
+        current = now or datetime.now(UTC)
         elapsed = (current - state.started_at).total_seconds()
         reason: str | None = None
         if elapsed >= limits.max_wall_seconds:

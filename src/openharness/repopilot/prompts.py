@@ -20,9 +20,7 @@ def _remaining(state: RepoRunState) -> dict[str, int | None]:
     }
 
 
-def build_phase_prompt(
-    phase: Phase, state: RepoRunState, *, diff_summary: str = ""
-) -> str:
+def build_phase_prompt(phase: Phase, state: RepoRunState, *, diff_summary: str = "") -> str:
     context = {
         "问题": state.task.issue,
         "允许路径": state.task.allowed_paths,
@@ -43,22 +41,19 @@ def build_phase_prompt(
     )
     if phase is Phase.ANALYZE:
         return (
-            common
-            + "目标：定位根因并引用真实代码证据。不得修改任何文件。"
+            common + "目标：定位根因并引用真实代码证据。不得修改任何文件。"
             "最终只输出符合 AnalysisResult JSON Schema 的 JSON："
             + json.dumps(AnalysisResult.model_json_schema(), ensure_ascii=False)
         )
     if phase in {Phase.PLAN, Phase.REPLAN}:
         return (
-            common
-            + "目标：制定最小、文件范围明确的修复计划。不得修改文件。"
+            common + "目标：制定最小、文件范围明确的修复计划。不得修改文件。"
             "最终只输出符合 RepairPlan JSON Schema 的 JSON："
             + json.dumps(RepairPlan.model_json_schema(), ensure_ascii=False)
         )
     if phase in {Phase.EXECUTE, Phase.REPAIR}:
         return (
-            common
-            + "目标：按计划编辑代码，仅处理验证器给出的证据。"
+            common + "目标：按计划编辑代码，仅处理验证器给出的证据。"
             "不得修改验证命令，不得使用 shell，不得越过允许路径。"
             "完成编辑后简短说明实际修改；不要输出虚构测试结果。"
         )

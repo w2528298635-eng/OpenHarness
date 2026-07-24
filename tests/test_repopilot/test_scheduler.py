@@ -12,7 +12,6 @@ from openharness.repopilot.models import (
 from openharness.repopilot.scheduler import RepoPilotScheduler
 from openharness.repopilot.store import RunStore
 
-
 ANALYSIS = {
     "suspected_files": ["app.py"],
     "root_cause": "off by one",
@@ -69,7 +68,13 @@ class FakeRunner:
 
     async def run(self, phase, state, cwd, *, diff_summary=""):
         self.phases.append(phase)
-        structured = ANALYSIS if phase is Phase.ANALYZE else PLAN if phase in {Phase.PLAN, Phase.REPLAN} else None
+        structured = (
+            ANALYSIS
+            if phase is Phase.ANALYZE
+            else PLAN
+            if phase in {Phase.PLAN, Phase.REPLAN}
+            else None
+        )
         return PhaseRunResult(phase=phase, structured=structured, tokens_used=5)
 
 

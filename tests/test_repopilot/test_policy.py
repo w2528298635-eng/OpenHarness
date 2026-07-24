@@ -22,14 +22,21 @@ def _state(tmp_path: Path) -> RepoRunState:
 
 def _verification(category: str, passed: bool = False) -> VerificationResult:
     return VerificationResult(
-        attempt=1, command=["pytest"], passed=passed, exit_code=0 if passed else 1, category=category
+        attempt=1,
+        command=["pytest"],
+        passed=passed,
+        exit_code=0 if passed else 1,
+        category=category,
     )
 
 
 def test_only_passing_verification_completes(tmp_path: Path) -> None:
     policy = TransitionPolicy()
 
-    assert policy.after_verify(_state(tmp_path), _verification("passed", True)).next_phase is Phase.COMPLETE
+    assert (
+        policy.after_verify(_state(tmp_path), _verification("passed", True)).next_phase
+        is Phase.COMPLETE
+    )
     assert policy.after_execute(_state(tmp_path), has_diff=True).next_phase is Phase.VERIFY
 
 
@@ -45,27 +52,52 @@ def test_repeated_failure_replans_and_empty_diff_replans(tmp_path: Path) -> None
     state = _state(tmp_path)
     state.failure_signatures = ["same", "same"]
 
-    assert TransitionPolicy().after_verify(
-        state,
-        VerificationResult(
-            attempt=2,
-            command=["pytest"],
-            passed=False,
-            exit_code=1,
-            category="test_failure",
-            failure_signature="same",
-        ),
-    ).next_phase is Phase.REPLAN
+    assert (
+        TransitionPolicy()
+        .after_verify(
+            state,
+            VerificationResult(
+                attempt=2,
+                command=["pytest"],
+                passed=False,
+                exit_code=1,
+                category="test_failure",
+                failure_signature="same",
+            ),
+        )
+        .next_phase
+        is Phase.REPLAN
+    )
     assert TransitionPolicy().after_execute(state, has_diff=False).next_phase is Phase.REPLAN
 
 
 @pytest.mark.parametrize(
     ("mutate", "next_phase", "reason"),
     [
-        (lambda state: setattr(state.budgets, "phase_calls", state.task.budgets.max_phase_calls), Phase.ANALYZE, "phase_call_budget_exhausted"),
-        (lambda state: setattr(state.budgets, "repair_attempts", state.task.budgets.max_repair_attempts), Phase.REPAIR, "repair_budget_exhausted"),
-        (lambda state: setattr(state.budgets, "replan_attempts", state.task.budgets.max_replan_attempts), Phase.REPLAN, "replan_budget_exhausted"),
-        (lambda state: setattr(state, "started_at", utc_now() - timedelta(hours=1)), Phase.VERIFY, "wall_clock_budget_exhausted"),
+        (
+            lambda state: setattr(state.budgets, "phase_calls", state.task.budgets.max_phase_calls),
+            Phase.ANALYZE,
+            "phase_call_budget_exhausted",
+        ),
+        (
+            lambda state: setattr(
+                state.budgets, "repair_attempts", state.task.budgets.max_repair_attempts
+            ),
+            Phase.REPAIR,
+            "repair_budget_exhausted",
+        ),
+        (
+            lambda state: setattr(
+                state.budgets, "replan_attempts", state.task.budgets.max_replan_attempts
+            ),
+            Phase.REPLAN,
+            "replan_budget_exhausted",
+        ),
+        (
+            lambda state: setattr(state, "started_at", utc_now() - timedelta(hours=1)),
+            Phase.VERIFY,
+            "wall_clock_budget_exhausted",
+        ),
     ],
 )
 def test_budget_exhaustion_is_explicit(

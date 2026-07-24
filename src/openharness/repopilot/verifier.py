@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 import re
 import time
 from pathlib import Path
@@ -47,14 +48,13 @@ class PythonPytestVerifier:
     def __init__(self, timeout_seconds: float = 300):
         self.timeout_seconds = timeout_seconds
 
-    async def verify(
-        self, argv: list[str], cwd: Path, *, attempt: int
-    ) -> VerificationResult:
+    async def verify(self, argv: list[str], cwd: Path, *, attempt: int) -> VerificationResult:
         started = time.monotonic()
         try:
             process = await asyncio.create_subprocess_exec(
                 *argv,
                 cwd=str(cwd),
+                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -72,7 +72,7 @@ class PythonPytestVerifier:
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
                 process.communicate(), timeout=self.timeout_seconds
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             process.kill()
             await process.communicate()
             return VerificationResult(

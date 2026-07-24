@@ -36,11 +36,7 @@ async def test_verifier_classifies_missing_executable_and_timeout(tmp_path: Path
 
 
 def test_failure_signature_ignores_volatile_values() -> None:
-    left = normalize_failure_signature(
-        r"C:\tmp\a\test_x.py:12 failed in 0.13s at 0x7FFABC", ""
-    )
-    right = normalize_failure_signature(
-        r"D:\other\test_x.py:99 failed in 3.27s at 0x1AAEEE", ""
-    )
+    left = normalize_failure_signature(r"C:\tmp\a\test_x.py:12 failed in 0.13s at 0x7FFABC", "")
+    right = normalize_failure_signature(r"D:\other\test_x.py:99 failed in 3.27s at 0x1AAEEE", "")
 
     assert left == right

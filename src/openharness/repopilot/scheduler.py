@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -39,7 +39,7 @@ class RepoPilotScheduler:
         self.budgets = budget_controller or BudgetController()
 
     async def start(self, task: RepoTaskSpec) -> RepoRunState:
-        run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid4().hex[:8]
+        run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ-") + uuid4().hex[:8]
         info = await self.workspace.create(task.repo_path, run_id)
         state = RepoRunState(
             run_id=run_id,
@@ -130,7 +130,7 @@ class RepoPilotScheduler:
                     decision = self.transitions.after_replan(valid=True)
                 else:
                     raise RuntimeError(f"unsupported phase: {state.phase}")
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - phase failures become durable state
                 decision = TransitionDecision(
                     next_phase=Phase.FAILED,
                     terminal_reason=f"{state.phase.value.lower()}_failed",
@@ -138,7 +138,7 @@ class RepoPilotScheduler:
                 )
             self._transition(state, decision)
 
-        state.completed_at = datetime.now(timezone.utc)
+        state.completed_at = datetime.now(UTC)
         state.updated_at = state.completed_at
         self.store.save_state(state)
         report = render_report(state, self.store.run_dir(state.run_id))
@@ -150,11 +150,11 @@ class RepoPilotScheduler:
         )
         return state
 
-    async def _model_phase(
-        self, state: RepoRunState, phase: Phase, *, diff_summary: str = ""
-    ):
+    async def _model_phase(self, state: RepoRunState, phase: Phase, *, diff_summary: str = ""):
         action_id = f"{state.run_id}:{phase.value.lower()}:{state.budgets.phase_calls + 1}"
-        self._record_action(state, action_id, phase, "phase_agent", {"cwd": str(state.worktree_path)})
+        self._record_action(
+            state, action_id, phase, "phase_agent", {"cwd": str(state.worktree_path)}
+        )
         state.budgets.phase_calls += 1
         output = await self.phase_runner.run(
             phase, state, state.worktree_path, diff_summary=diff_summary
@@ -162,9 +162,17 @@ class RepoPilotScheduler:
         if output.tokens_used is not None:
             state.budgets.total_tokens = (state.budgets.total_tokens or 0) + output.tokens_used
         for action in output.actions:
-            self.store.append_event({"run_id": state.run_id, "kind": "action", **action.model_dump(mode="json")})
+            self.store.append_event(
+                {"run_id": state.run_id, "kind": "action", **action.model_dump(mode="json")}
+            )
         for observation in output.observations:
-            self.store.append_event({"run_id": state.run_id, "kind": "observation", **observation.model_dump(mode="json")})
+            self.store.append_event(
+                {
+                    "run_id": state.run_id,
+                    "kind": "observation",
+                    **observation.model_dump(mode="json"),
+                }
+            )
         self._record_observation(state, action_id, "success", output.final_text[:1000])
         return output
 
@@ -182,9 +190,7 @@ class RepoPilotScheduler:
             state.task.verify_command, state.worktree_path, attempt=attempt
         )
         state.verification_history.append(result)
-        self.store.write_json(
-            state.run_id, f"verification-{attempt}.json", result
-        )
+        self.store.write_json(state.run_id, f"verification-{attempt}.json", result)
         self.store.write_text(
             state.run_id,
             f"verification-{attempt}.log",
@@ -204,7 +210,7 @@ class RepoPilotScheduler:
         state.phase = decision.next_phase
         if decision.terminal_reason:
             state.terminal_reason = decision.terminal_reason
-        state.updated_at = datetime.now(timezone.utc)
+        state.updated_at = datetime.now(UTC)
         self._event(
             state,
             "transition",
@@ -261,7 +267,7 @@ class RepoPilotScheduler:
             {
                 "run_id": state.run_id,
                 "kind": kind,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 **data,
             }
         )
