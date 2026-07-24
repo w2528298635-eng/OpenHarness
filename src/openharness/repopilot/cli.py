@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -23,11 +24,17 @@ repopilot_app = typer.Typer(
 
 
 def _scheduler(repo: Path, verify_timeout: float = 300) -> RepoPilotScheduler:
+    api_key = os.environ.get("OPENHARNESS_OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
     return RepoPilotScheduler(
         store=RunStore(repo),
         workspace=WorkspaceManager(),
         verifier=PythonPytestVerifier(timeout_seconds=verify_timeout),
-        phase_runner=OpenHarnessPhaseRunner(),
+        phase_runner=OpenHarnessPhaseRunner(
+            model=os.environ.get("OPENHARNESS_MODEL"),
+            base_url=os.environ.get("OPENHARNESS_BASE_URL") or os.environ.get("OPENAI_BASE_URL"),
+            api_key=api_key,
+            api_format=os.environ.get("OPENHARNESS_API_FORMAT"),
+        ),
     )
 
 
