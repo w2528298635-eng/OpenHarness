@@ -98,6 +98,24 @@ def test_repeated_failure_replans_and_empty_diff_replans(tmp_path: Path) -> None
             Phase.VERIFY,
             "wall_clock_budget_exhausted",
         ),
+        (
+            lambda state: setattr(
+                state.budgets,
+                "repeated_diffs",
+                state.task.budgets.max_repeated_diffs,
+            ),
+            Phase.VERIFY,
+            "repeated_diff_budget_exhausted",
+        ),
+        (
+            lambda state: setattr(
+                state.budgets,
+                "repeated_actions",
+                state.task.budgets.max_repeated_actions,
+            ),
+            Phase.EXECUTE,
+            "repeated_action_budget_exhausted",
+        ),
     ],
 )
 def test_budget_exhaustion_is_explicit(
@@ -109,3 +127,23 @@ def test_budget_exhaustion_is_explicit(
     mutate(state)
 
     assert BudgetController().check(state, next_phase=next_phase).terminal_reason == reason
+
+
+def test_token_budget_allows_precheck_before_model_usage(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    state.task.budgets.max_total_tokens = 100
+
+    decision = BudgetController().check(state, next_phase=Phase.PRECHECK)
+
+    assert decision.next_phase is Phase.PRECHECK
+    assert decision.terminal_reason is None
+
+
+def test_token_budget_requires_usage_after_first_model_phase(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    state.task.budgets.max_total_tokens = 100
+    state.budgets.phase_calls = 1
+
+    decision = BudgetController().check(state, next_phase=Phase.PLAN)
+
+    assert decision.terminal_reason == "usage_unavailable"

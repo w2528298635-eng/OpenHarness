@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -18,6 +19,14 @@ from .phase_runner import PhaseAgentRunner
 from .policy import BudgetController, TransitionPolicy
 from .report import render_report
 from .store import RunStore
+
+
+class InvalidAnalysisError(ValueError):
+    pass
+
+
+class InvalidPlanError(ValueError):
+    pass
 
 
 class RepoPilotScheduler:
@@ -49,6 +58,7 @@ class RepoPilotScheduler:
             worktree_branch=info.branch,
         )
         self.store.create(state)
+        self.store.write_text(state.run_id, "diff.patch", "")
         self._event(state, "run_started", {"worktree": str(state.worktree_path)})
         return await self._run(state)
 
@@ -69,20 +79,27 @@ class RepoPilotScheduler:
                 break
             try:
                 if state.phase is Phase.PRECHECK:
-                    result = await self._verify(state)
+                    result = await self._verify_with_timeout_retry(state)
                     decision = self.transitions.after_precheck(result)
                 elif state.phase is Phase.ANALYZE:
                     output = await self._model_phase(state, Phase.ANALYZE)
                     state.analysis = AnalysisResult.model_validate(output.structured)
+                    self._validate_analysis(state)
                     self.store.write_json(state.run_id, "analysis.json", state.analysis)
                     decision = TransitionDecision(next_phase=Phase.PLAN)
                 elif state.phase is Phase.PLAN:
                     output = await self._model_phase(state, Phase.PLAN)
                     state.plan = RepairPlan.model_validate(output.structured)
+                    self._validate_plan(state)
                     self.store.write_json(state.run_id, "plan.json", state.plan)
                     decision = TransitionDecision(next_phase=Phase.EXECUTE)
                 elif state.phase in {Phase.EXECUTE, Phase.REPAIR}:
                     active_phase = state.phase
+                    before_diff = (
+                        await self.workspace.diff(state.worktree_path)
+                        if active_phase is Phase.REPAIR
+                        else ""
+                    )
                     if active_phase is Phase.REPAIR:
                         state.budgets.repair_attempts += 1
                     await self._model_phase(
@@ -95,6 +112,10 @@ class RepoPilotScheduler:
                     state.changed_files = files
                     self.store.write_text(state.run_id, "diff.patch", diff)
                     signature = self.workspace.diff_signature(diff)
+                    if state.diff_signatures and state.diff_signatures[-1] == signature:
+                        state.budgets.repeated_diffs += 1
+                    else:
+                        state.budgets.repeated_diffs = 0
                     state.diff_signatures.append(signature)
                     violation = self.workspace.validate_changed_files(
                         files, state.task.allowed_paths
@@ -111,29 +132,49 @@ class RepoPilotScheduler:
                         )
                     else:
                         decision = self.transitions.after_repair(
-                            state, diff_changed=bool(diff.strip())
+                            state,
+                            diff_changed=(
+                                bool(diff.strip())
+                                and self.workspace.diff_signature(diff)
+                                != self.workspace.diff_signature(before_diff)
+                            ),
                         )
                 elif state.phase is Phase.VERIFY:
-                    result = await self._verify(state)
+                    result = await self._verify_with_timeout_retry(state)
                     decision = self.transitions.after_verify(state, result)
                     if result.failure_signature:
                         state.failure_signatures.append(result.failure_signature)
                 elif state.phase is Phase.REPLAN:
                     state.budgets.replan_attempts += 1
+                    analysis_output = await self._model_phase(
+                        state,
+                        Phase.ANALYZE,
+                        diff_summary=self._latest_verification_summary(state),
+                    )
+                    state.analysis = AnalysisResult.model_validate(analysis_output.structured)
+                    self._validate_analysis(state)
+                    self.store.write_json(state.run_id, "analysis.json", state.analysis)
                     output = await self._model_phase(
                         state,
                         Phase.REPLAN,
                         diff_summary=self._latest_verification_summary(state),
                     )
                     state.plan = RepairPlan.model_validate(output.structured)
+                    self._validate_plan(state)
                     self.store.write_json(state.run_id, "plan.json", state.plan)
                     decision = self.transitions.after_replan(valid=True)
                 else:
                     raise RuntimeError(f"unsupported phase: {state.phase}")
             except Exception as exc:  # noqa: BLE001 - phase failures become durable state
+                if isinstance(exc, InvalidAnalysisError):
+                    terminal_reason = "invalid_analysis"
+                elif isinstance(exc, InvalidPlanError):
+                    terminal_reason = "invalid_plan"
+                else:
+                    terminal_reason = f"{state.phase.value.lower()}_failed"
                 decision = TransitionDecision(
                     next_phase=Phase.FAILED,
-                    terminal_reason=f"{state.phase.value.lower()}_failed",
+                    terminal_reason=terminal_reason,
                     detail=str(exc),
                 )
             self._transition(state, decision)
@@ -162,6 +203,17 @@ class RepoPilotScheduler:
         if output.tokens_used is not None:
             state.budgets.total_tokens = (state.budgets.total_tokens or 0) + output.tokens_used
         for action in output.actions:
+            signature = json.dumps(
+                [action.action_type, action.parameters],
+                sort_keys=True,
+                ensure_ascii=False,
+                default=str,
+            )
+            if state.action_signatures and state.action_signatures[-1] == signature:
+                state.budgets.repeated_actions += 1
+            else:
+                state.budgets.repeated_actions = 0
+            state.action_signatures.append(signature)
             self.store.append_event(
                 {"run_id": state.run_id, "kind": "action", **action.model_dump(mode="json")}
             )
@@ -205,6 +257,12 @@ class RepoPilotScheduler:
         )
         return result
 
+    async def _verify_with_timeout_retry(self, state: RepoRunState):
+        result = await self._verify(state)
+        if result.category == "timeout":
+            result = await self._verify(state)
+        return result
+
     def _transition(self, state: RepoRunState, decision: TransitionDecision) -> None:
         previous = state.phase
         state.phase = decision.next_phase
@@ -239,6 +297,7 @@ class RepoPilotScheduler:
         self.store.append_event(
             {"run_id": state.run_id, "kind": "action", **action.model_dump(mode="json")}
         )
+        self.store.save_state(state)
 
     def _record_observation(
         self,
@@ -271,6 +330,49 @@ class RepoPilotScheduler:
                 **data,
             }
         )
+
+    @staticmethod
+    def _resolve_inside(worktree: Path, raw_path: str, *, must_exist: bool) -> Path:
+        candidate = (worktree / raw_path).resolve()
+        try:
+            candidate.relative_to(worktree.resolve())
+        except ValueError as exc:
+            raise ValueError(f"path escapes worktree: {raw_path}") from exc
+        if must_exist and not candidate.is_file():
+            raise ValueError(f"evidence file does not exist: {raw_path}")
+        if not must_exist and not candidate.exists() and not candidate.parent.is_dir():
+            raise ValueError(f"planned file parent does not exist: {raw_path}")
+        return candidate
+
+    def _validate_analysis(self, state: RepoRunState) -> None:
+        if state.analysis is None or state.worktree_path is None:
+            raise InvalidAnalysisError("analysis or worktree is missing")
+        paths = [
+            *state.analysis.suspected_files,
+            *(evidence.file for evidence in state.analysis.evidence),
+        ]
+        try:
+            for path in paths:
+                self._resolve_inside(state.worktree_path, path, must_exist=True)
+        except ValueError as exc:
+            raise InvalidAnalysisError(str(exc)) from exc
+
+    def _validate_plan(self, state: RepoRunState) -> None:
+        if state.plan is None or state.worktree_path is None:
+            raise InvalidPlanError("plan or worktree is missing")
+        paths = list(state.plan.expected_files)
+        for step in state.plan.steps:
+            paths.extend(step.target_files)
+        violation = self.workspace.validate_changed_files(
+            sorted(set(paths)), state.task.allowed_paths
+        )
+        if violation:
+            raise InvalidPlanError(violation)
+        try:
+            for path in paths:
+                self._resolve_inside(state.worktree_path, path, must_exist=False)
+        except ValueError as exc:
+            raise InvalidPlanError(str(exc)) from exc
 
     @staticmethod
     def _latest_verification_summary(state: RepoRunState) -> str:

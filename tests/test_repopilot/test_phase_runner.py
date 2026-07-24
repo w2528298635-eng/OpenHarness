@@ -7,6 +7,7 @@ from openharness.api.usage import UsageSnapshot
 from openharness.engine.messages import ConversationMessage, TextBlock
 from openharness.engine.stream_events import (
     AssistantTurnComplete,
+    ErrorEvent,
     ToolExecutionCompleted,
     ToolExecutionStarted,
 )
@@ -33,6 +34,13 @@ class FakeEngine:
             ConversationMessage(role="assistant", content=[TextBlock(text=answer)]),
             UsageSnapshot(input_tokens=10, output_tokens=5),
         )
+
+
+class ErrorOnlyEngine:
+    _tool_registry = None
+
+    async def submit_message(self, prompt):
+        yield ErrorEvent("provider unavailable", recoverable=True)
 
 
 def _state(tmp_path: Path) -> RepoRunState:
@@ -77,3 +85,16 @@ async def test_runner_retries_invalid_json_once_and_builds_fresh_runtime(tmp_pat
 
     assert first.structured and second.structured
     assert len(created) == 2
+
+
+@pytest.mark.asyncio
+async def test_edit_phase_fails_when_provider_returns_no_completed_turn(
+    tmp_path: Path,
+) -> None:
+    async def factory(**kwargs):
+        return SimpleNamespace(engine=ErrorOnlyEngine(), tool_registry=ToolRegistry())
+
+    with pytest.raises(RuntimeError, match="provider unavailable"):
+        await OpenHarnessPhaseRunner(runtime_factory=factory).run(
+            Phase.EXECUTE, _state(tmp_path), tmp_path
+        )

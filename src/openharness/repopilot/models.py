@@ -164,6 +164,7 @@ class RepoRunState(BaseModel):
     action_ids: list[str] = Field(default_factory=list)
     failure_signatures: list[str] = Field(default_factory=list)
     diff_signatures: list[str] = Field(default_factory=list)
+    action_signatures: list[str] = Field(default_factory=list)
     terminal_reason: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)

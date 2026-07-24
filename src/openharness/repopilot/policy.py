@@ -88,10 +88,14 @@ class BudgetController:
             reason = "replan_budget_exhausted"
         elif changed_files is not None and len(changed_files) > limits.max_changed_files:
             reason = "changed_file_budget_exhausted"
+        elif usage.repeated_diffs >= limits.max_repeated_diffs:
+            reason = "repeated_diff_budget_exhausted"
+        elif usage.repeated_actions >= limits.max_repeated_actions:
+            reason = "repeated_action_budget_exhausted"
         elif limits.max_total_tokens is not None:
-            if usage.total_tokens is None:
+            if usage.phase_calls > 0 and usage.total_tokens is None:
                 reason = "usage_unavailable"
-            elif usage.total_tokens >= limits.max_total_tokens:
+            elif usage.total_tokens is not None and usage.total_tokens >= limits.max_total_tokens:
                 reason = "token_budget_exhausted"
         if reason:
             return TransitionDecision(next_phase=Phase.FAILED, terminal_reason=reason)

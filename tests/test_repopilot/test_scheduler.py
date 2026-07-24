@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -37,6 +38,7 @@ class FakeWorkspace:
     async def create(self, repo, run_id):
         worktree = repo.parent / f"worktree-{run_id}"
         worktree.mkdir()
+        (worktree / "app.py").write_text("broken = True\n", encoding="utf-8")
         return SimpleNamespace(path=worktree, branch=f"repopilot/{run_id}")
 
     async def diff(self, worktree):
@@ -89,6 +91,16 @@ def verification(passed: bool, signature: str | None = None):
     )
 
 
+def timeout_verification():
+    return VerificationResult(
+        attempt=0,
+        command=["pytest"],
+        passed=False,
+        category="timeout",
+        failure_signature="timeout",
+    )
+
+
 @pytest.mark.asyncio
 async def test_successful_run_can_only_complete_after_verification(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
@@ -103,7 +115,12 @@ async def test_successful_run_can_only_complete_after_verification(tmp_path: Pat
     )
 
     state = await scheduler.start(
-        RepoTaskSpec(repo_path=repo, issue="broken", verify_command=["pytest"])
+        RepoTaskSpec(
+            repo_path=repo,
+            issue="broken",
+            verify_command=["pytest"],
+            budgets={"max_repeated_diffs": 10},
+        )
     )
 
     assert state.phase is Phase.COMPLETE
@@ -132,6 +149,7 @@ async def test_bug_not_reproduced_stops_before_model_call(tmp_path: Path) -> Non
     assert state.phase is Phase.FAILED
     assert state.terminal_reason == "bug_not_reproduced"
     assert runner.phases == []
+    assert (scheduler.store.run_dir(state.run_id) / "diff.patch").exists()
 
 
 @pytest.mark.asyncio
@@ -149,9 +167,173 @@ async def test_failed_verification_enters_repair_then_verifies_again(tmp_path: P
     )
 
     state = await scheduler.start(
-        RepoTaskSpec(repo_path=repo, issue="broken", verify_command=["pytest"])
+        RepoTaskSpec(
+            repo_path=repo,
+            issue="broken",
+            verify_command=["pytest"],
+            budgets={"max_repeated_diffs": 10},
+        )
     )
 
     assert state.phase is Phase.COMPLETE
     assert Phase.REPAIR in runner.phases
     assert state.budgets.repair_attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_precheck_timeout_is_retried_once(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    runner = FakeRunner()
+    scheduler = RepoPilotScheduler(
+        store=RunStore(repo),
+        workspace=FakeWorkspace(),
+        verifier=FakeVerifier(
+            [timeout_verification(), verification(False, "baseline"), verification(True)]
+        ),
+        phase_runner=runner,
+    )
+
+    state = await scheduler.start(
+        RepoTaskSpec(repo_path=repo, issue="broken", verify_command=["pytest"])
+    )
+
+    assert state.phase is Phase.COMPLETE
+    assert len(state.verification_history) == 3
+
+
+class UnchangedRepairWorkspace(FakeWorkspace):
+    def __init__(self):
+        self.diffs = iter(
+            [
+                "diff --git a/app.py b/app.py\n+first",
+                "diff --git a/app.py b/app.py\n+first",
+                "diff --git a/app.py b/app.py\n+first",
+                "diff --git a/app.py b/app.py\n+second",
+            ]
+        )
+
+    async def diff(self, worktree):
+        return next(self.diffs)
+
+    def diff_signature(self, diff):
+        return diff
+
+
+@pytest.mark.asyncio
+async def test_unchanged_repair_diff_replans_instead_of_reverifying(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    runner = FakeRunner()
+    scheduler = RepoPilotScheduler(
+        store=RunStore(repo),
+        workspace=UnchangedRepairWorkspace(),
+        verifier=FakeVerifier(
+            [verification(False, "baseline"), verification(False, "new"), verification(True)]
+        ),
+        phase_runner=runner,
+    )
+
+    state = await scheduler.start(
+        RepoTaskSpec(repo_path=repo, issue="broken", verify_command=["pytest"])
+    )
+
+    assert state.phase is Phase.COMPLETE
+    assert runner.phases == [
+        Phase.ANALYZE,
+        Phase.PLAN,
+        Phase.EXECUTE,
+        Phase.REPAIR,
+        Phase.ANALYZE,
+        Phase.REPLAN,
+        Phase.EXECUTE,
+    ]
+
+
+class InterruptOnceRunner(FakeRunner):
+    def __init__(self):
+        super().__init__()
+        self.interrupted = False
+
+    async def run(self, phase, state, cwd, *, diff_summary=""):
+        if phase is Phase.ANALYZE and not self.interrupted:
+            self.interrupted = True
+            raise KeyboardInterrupt
+        return await super().run(phase, state, cwd, diff_summary=diff_summary)
+
+
+@pytest.mark.asyncio
+async def test_resume_reruns_incomplete_phase_without_duplicate_action(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    runner = InterruptOnceRunner()
+    store = RunStore(repo)
+    scheduler = RepoPilotScheduler(
+        store=store,
+        workspace=FakeWorkspace(),
+        verifier=FakeVerifier([verification(False, "baseline"), verification(True)]),
+        phase_runner=runner,
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        await scheduler.start(
+            RepoTaskSpec(repo_path=repo, issue="broken", verify_command=["pytest"])
+        )
+    run_id = next(store.root.iterdir()).name
+    state = await scheduler.resume(run_id)
+    events = [
+        json.loads(line)
+        for line in (store.run_dir(run_id) / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+
+    assert state.phase is Phase.COMPLETE
+    analyze_actions = [
+        event
+        for event in events
+        if event.get("kind") == "action" and event.get("phase") == Phase.ANALYZE.value
+    ]
+    assert len(analyze_actions) == 1
+
+
+class InvalidEvidenceRunner(FakeRunner):
+    async def run(self, phase, state, cwd, *, diff_summary=""):
+        if phase is Phase.ANALYZE:
+            return PhaseRunResult(
+                phase=phase,
+                structured={
+                    **ANALYSIS,
+                    "suspected_files": ["../secret.py"],
+                    "evidence": [
+                        {
+                            "file": "../secret.py",
+                            "observation": "outside worktree",
+                        }
+                    ],
+                },
+            )
+        return await super().run(phase, state, cwd, diff_summary=diff_summary)
+
+
+@pytest.mark.asyncio
+async def test_analysis_evidence_must_exist_inside_worktree(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    scheduler = RepoPilotScheduler(
+        store=RunStore(repo),
+        workspace=FakeWorkspace(),
+        verifier=FakeVerifier([verification(False, "baseline")]),
+        phase_runner=InvalidEvidenceRunner(),
+    )
+
+    state = await scheduler.start(
+        RepoTaskSpec(repo_path=repo, issue="broken", verify_command=["pytest"])
+    )
+
+    assert state.phase is Phase.FAILED
+    assert state.terminal_reason == "invalid_analysis"

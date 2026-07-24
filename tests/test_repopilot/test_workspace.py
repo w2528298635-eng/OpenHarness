@@ -1,9 +1,14 @@
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from openharness.repopilot.workspace import WorkspaceManager
+
+
+def _init_repo(repo: Path) -> None:
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
 
 
 class FakeWorktrees:
@@ -55,3 +60,16 @@ async def test_default_worktree_storage_is_next_to_repository(tmp_path: Path, mo
     await workspace.create(repo, "run-1")
 
     assert captured["base_dir"] == tmp_path / ".openharness-repopilot-worktrees" / "repo"
+
+
+@pytest.mark.asyncio
+async def test_diff_includes_untracked_text_files(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    (repo / "new_module.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+    diff = await WorkspaceManager(FakeWorktrees()).diff(repo)
+
+    assert "new_module.py" in diff
+    assert "+VALUE = 1" in diff

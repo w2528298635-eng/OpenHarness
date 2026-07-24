@@ -83,7 +83,12 @@ class OpenHarnessPhaseRunner:
             include_project_memory=False,
             **self.runtime_options,
         )
-        scoped = ScopedToolRegistry.from_registry(bundle.tool_registry, phase)
+        scoped = ScopedToolRegistry.from_registry(
+            bundle.tool_registry,
+            phase,
+            cwd=cwd,
+            allowed_paths=state.task.allowed_paths,
+        )
         bundle.tool_registry = scoped
         bundle.engine._tool_registry = scoped
         try:
@@ -104,9 +109,11 @@ class OpenHarnessPhaseRunner:
         total_tokens = 0
         final_text = ""
         pending_action_ids: list[str] = []
+        error_messages: list[str] = []
 
         for output_attempt in range(2):
             current_text = ""
+            completed_turn = False
             async for event in engine.submit_message(
                 prompt
                 if output_attempt == 0
@@ -137,14 +144,23 @@ class OpenHarnessPhaseRunner:
                 elif isinstance(event, AssistantTurnComplete):
                     current_text = event.message.text
                     total_tokens += event.usage.total_tokens
-                elif isinstance(event, ErrorEvent) and not event.recoverable:
-                    raise RuntimeError(event.message)
+                    completed_turn = True
+                elif isinstance(event, ErrorEvent):
+                    error_messages.append(event.message)
+                    if not event.recoverable:
+                        raise RuntimeError(event.message)
             final_text = current_text
+            if not completed_turn:
+                raise RuntimeError(
+                    error_messages[-1]
+                    if error_messages
+                    else "model phase returned no completed turn"
+                )
             if schema is None:
                 return PhaseRunResult(
                     phase=phase,
                     final_text=final_text,
-                    tokens_used=total_tokens,
+                    tokens_used=total_tokens or None,
                     actions=actions,
                     observations=observations,
                 )
@@ -154,7 +170,7 @@ class OpenHarnessPhaseRunner:
                     phase=phase,
                     structured=validated.model_dump(mode="json"),
                     final_text=final_text,
-                    tokens_used=total_tokens,
+                    tokens_used=total_tokens or None,
                     actions=actions,
                     observations=observations,
                 )

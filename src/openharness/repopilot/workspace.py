@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 import fnmatch
 import hashlib
 from pathlib import Path
@@ -41,7 +42,30 @@ class WorkspaceManager:
         return stdout.decode(errors="replace")
 
     async def diff(self, worktree: Path) -> str:
-        return await self._git(worktree, "diff", "--binary", "--no-ext-diff")
+        tracked = await self._git(worktree, "diff", "--binary", "--no-ext-diff")
+        untracked_output = await self._git(worktree, "ls-files", "--others", "--exclude-standard")
+        additions: list[str] = []
+        for relative in untracked_output.splitlines():
+            normalized = relative.replace("\\", "/")
+            target = worktree / relative
+            if not target.is_file():
+                continue
+            header = f"diff --git a/{normalized} b/{normalized}\nnew file mode 100644\n"
+            try:
+                content = target.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                additions.append(header + f"Binary files /dev/null and b/{normalized} differ\n")
+                continue
+            patch = "".join(
+                difflib.unified_diff(
+                    [],
+                    content.splitlines(keepends=True),
+                    fromfile="/dev/null",
+                    tofile=f"b/{normalized}",
+                )
+            )
+            additions.append(header + patch)
+        return tracked + "".join(additions)
 
     async def changed_files(self, worktree: Path) -> list[str]:
         output = await self._git(worktree, "status", "--porcelain=v1", "--untracked-files=all")
