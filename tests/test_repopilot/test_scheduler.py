@@ -80,6 +80,21 @@ class FakeRunner:
         return PhaseRunResult(phase=phase, structured=structured, tokens_used=5)
 
 
+class ContextCapturingRunner(FakeRunner):
+    def __init__(self):
+        super().__init__()
+        self.contexts = []
+
+    async def run(self, phase, state, cwd, *, diff_summary="", retrieved_context=""):
+        self.contexts.append((phase, retrieved_context))
+        return await super().run(
+            phase,
+            state,
+            cwd,
+            diff_summary=diff_summary,
+        )
+
+
 def verification(passed: bool, signature: str | None = None):
     return VerificationResult(
         attempt=0,
@@ -138,6 +153,38 @@ async def test_successful_run_can_only_complete_after_verification(tmp_path: Pat
         event.get("schema_version") == 1 and event.get("kind") == "phase_started"
         for event in events
     )
+
+
+@pytest.mark.asyncio
+async def test_retrieval_writes_trace_and_supplies_analyze_context(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text(
+        "def calculate_discount(total):\n    return total * 0.9\n",
+        encoding="utf-8",
+    )
+    store = RunStore(repo)
+    runner = ContextCapturingRunner()
+    scheduler = RepoPilotScheduler(
+        store=store,
+        workspace=FakeWorkspace(),
+        verifier=FakeVerifier([verification(False, "baseline"), verification(True)]),
+        phase_runner=runner,
+    )
+
+    state = await scheduler.start(
+        RepoTaskSpec(
+            repo_path=repo,
+            issue="broken",
+            verify_command=["pytest"],
+            retrieval={"enabled": True, "context_char_budget": 2000},
+        )
+    )
+
+    analyze_context = next(context for phase, context in runner.contexts if phase is Phase.ANALYZE)
+    assert "broken = True" in analyze_context
+    traces = list(store.run_dir(state.run_id).glob("context-analyze-*.json"))
+    assert len(traces) == 1
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from .context import ContextBuilder, ContextSelection
 from .handlers import RepairPhaseHandler
 from .models import (
     ActionRecord,
@@ -18,7 +19,9 @@ from .models import (
 )
 from .phase_runner import PhaseAgentRunner
 from .policy import BudgetController, TransitionPolicy
+from .prompts import prompt_version_for_phase
 from .report import render_report
+from .retrieval import RepositoryIndex
 from .store import RunStore
 from .usage import RunSummary, TokenUsage
 from .workflow import WorkflowDefinition, WorkflowRuntime
@@ -254,9 +257,11 @@ class RepoPilotScheduler:
             state, action_id, phase, "phase_agent", {"cwd": str(state.worktree_path)}
         )
         state.budgets.phase_calls += 1
-        output = await self.phase_runner.run(
-            phase, state, state.worktree_path, diff_summary=diff_summary
-        )
+        context = self._build_retrieval_context(state, phase, diff_summary=diff_summary)
+        run_kwargs = {"diff_summary": diff_summary}
+        if context is not None:
+            run_kwargs["retrieved_context"] = context.rendered
+        output = await self.phase_runner.run(phase, state, state.worktree_path, **run_kwargs)
         if output.tokens_used is not None:
             state.budgets.total_tokens = (state.budgets.total_tokens or 0) + output.tokens_used
         for action in output.actions:
@@ -284,6 +289,47 @@ class RepoPilotScheduler:
             )
         self._record_observation(state, action_id, "success", output.final_text[:1000])
         return output
+
+    def _build_retrieval_context(
+        self,
+        state: RepoRunState,
+        phase: Phase,
+        *,
+        diff_summary: str,
+    ) -> ContextSelection | None:
+        config = state.task.retrieval
+        if not config.enabled or phase not in {Phase.ANALYZE, Phase.REPLAN}:
+            return None
+        index = RepositoryIndex.build(
+            state.worktree_path,
+            allowed_paths=state.task.allowed_paths,
+            max_file_bytes=config.max_file_bytes,
+            max_chunk_chars=config.max_chunk_chars,
+        )
+        priority_paths = state.analysis.suspected_files if state.analysis else []
+        context = ContextBuilder(
+            char_budget=config.context_char_budget,
+            top_k=config.top_k,
+        ).build(
+            index=index,
+            query=" ".join(
+                part
+                for part in (
+                    state.task.issue,
+                    state.analysis.root_cause if state.analysis else "",
+                    diff_summary,
+                )
+                if part
+            ),
+            failure_text=diff_summary,
+            priority_paths=priority_paths,
+        )
+        attempt = state.budgets.phase_calls
+        name = f"context-{phase.value.lower()}-{attempt}.json"
+        payload = context.model_dump(mode="json")
+        payload["prompt_version"] = prompt_version_for_phase(phase)
+        self.store.write_json(state.run_id, name, payload)
+        return context
 
     async def _verify(self, state: RepoRunState):
         attempt = len(state.verification_history) + 1

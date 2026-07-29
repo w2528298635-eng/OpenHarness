@@ -73,6 +73,27 @@ async def test_runner_parses_structured_output_and_captures_trace(tmp_path: Path
 
 
 @pytest.mark.asyncio
+async def test_runner_embeds_retrieved_context_in_prompt(tmp_path: Path) -> None:
+    captured = {}
+
+    async def factory(**kwargs):
+        captured["prompt"] = kwargs["prompt"]
+        return SimpleNamespace(
+            engine=FakeEngine([ANALYSIS_JSON]),
+            tool_registry=ToolRegistry(),
+        )
+
+    await OpenHarnessPhaseRunner(runtime_factory=factory).run(
+        Phase.ANALYZE,
+        _state(tmp_path),
+        tmp_path,
+        retrieved_context="### app.py:1-2\nboundary evidence",
+    )
+
+    assert "boundary evidence" in captured["prompt"]
+
+
+@pytest.mark.asyncio
 async def test_runner_retries_invalid_json_once_and_builds_fresh_runtime(tmp_path: Path) -> None:
     created = []
 

@@ -35,7 +35,13 @@ RuntimeFactory = Callable[..., Awaitable[Any]]
 
 class PhaseAgentRunner(Protocol):
     async def run(
-        self, phase: Phase, state: RepoRunState, cwd: Path, *, diff_summary: str = ""
+        self,
+        phase: Phase,
+        state: RepoRunState,
+        cwd: Path,
+        *,
+        diff_summary: str = "",
+        retrieved_context: str = "",
     ) -> PhaseRunResult: ...
 
 
@@ -73,9 +79,20 @@ class OpenHarnessPhaseRunner:
         }
 
     async def run(
-        self, phase: Phase, state: RepoRunState, cwd: Path, *, diff_summary: str = ""
+        self,
+        phase: Phase,
+        state: RepoRunState,
+        cwd: Path,
+        *,
+        diff_summary: str = "",
+        retrieved_context: str = "",
     ) -> PhaseRunResult:
-        prompt = build_phase_prompt(phase, state, diff_summary=diff_summary)
+        prompt = build_phase_prompt(
+            phase,
+            state,
+            diff_summary=diff_summary,
+            retrieved_context=retrieved_context,
+        )
         bundle = await self.runtime_factory(
             prompt=prompt,
             cwd=str(cwd),
