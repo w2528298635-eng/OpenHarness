@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "suite": "repopilot-10-task-repair-suite-final",
+  "date": "2026-07-30 Asia/Hong_Kong",
+  "environment": {
+    "os": "Windows",
+    "python": "3.11",
+    "provider": "DeepSeek OpenAI-compatible API",
+    "model": "deepseek-chat",
+    "prompt_version": "2",
+    "repetitions": 1
+  },
+  "aggregates": {
+    "scripted": {
+      "verified": 10,
+      "cases": 10,
+      "median_duration_seconds": 1.906,
+      "total_tokens": 0,
+      "scope_compliance_rate": 1.0
+    },
+    "model_no_retrieval": {
+      "verified": 10,
+      "cases": 10,
+      "median_duration_seconds": 20.086,
+      "total_tokens": 253468,
+      "scope_compliance_rate": 1.0
+    },
+    "model_with_retrieval": {
+      "verified": 10,
+      "cases": 10,
+      "median_duration_seconds": 19.9765,
+      "total_tokens": 260358,
+      "scope_compliance_rate": 1.0
+    }
+  },
+  "model_results": [
+    {"strategy":"model_no_retrieval","case":"boundary","run_id":"20260729T180220Z-4408510b","verified":true,"total_tokens":23850},
+    {"strategy":"model_no_retrieval","case":"exception","run_id":"20260729T180244Z-616c597f","verified":true,"total_tokens":24686},
+    {"strategy":"model_no_retrieval","case":"branching","run_id":"20260729T180303Z-8e451be5","verified":true,"total_tokens":23844},
+    {"strategy":"model_no_retrieval","case":"normalization","run_id":"20260729T180324Z-9ed1e9db","verified":true,"total_tokens":23861},
+    {"strategy":"model_no_retrieval","case":"collection_import","run_id":"20260729T180952Z-3b990010","verified":true,"total_tokens":32466},
+    {"strategy":"model_no_retrieval","case":"multi_file","run_id":"20260729T180347Z-8b44ff1b","verified":true,"total_tokens":28054},
+    {"strategy":"model_no_retrieval","case":"mutation","run_id":"20260729T180410Z-fda19cfb","verified":true,"total_tokens":24346},
+    {"strategy":"model_no_retrieval","case":"regression","run_id":"20260729T180431Z-fb2db98e","verified":true,"total_tokens":24035},
+    {"strategy":"model_no_retrieval","case":"replan","run_id":"20260729T180452Z-8dc2ce1b","verified":true,"total_tokens":24363},
+    {"strategy":"model_no_retrieval","case":"scope","run_id":"20260729T180513Z-425001a9","verified":true,"total_tokens":23963},
+    {"strategy":"model_with_retrieval","case":"boundary","run_id":"20260729T180533Z-6096889e","verified":true,"total_tokens":19778},
+    {"strategy":"model_with_retrieval","case":"exception","run_id":"20260729T180553Z-c03d4f93","verified":true,"total_tokens":24637},
+    {"strategy":"model_with_retrieval","case":"branching","run_id":"20260729T180613Z-68b71b6e","verified":true,"total_tokens":24021},
+    {"strategy":"model_with_retrieval","case":"normalization","run_id":"20260729T180635Z-ccaa0079","verified":true,"total_tokens":24189},
+    {"strategy":"model_with_retrieval","case":"collection_import","run_id":"20260729T181545Z-260c0b7d","verified":true,"total_tokens":32297},
+    {"strategy":"model_with_retrieval","case":"multi_file","run_id":"20260729T180659Z-47e5a8d0","verified":true,"total_tokens":31160},
+    {"strategy":"model_with_retrieval","case":"mutation","run_id":"20260729T180722Z-8c817c0f","verified":true,"total_tokens":24640},
+    {"strategy":"model_with_retrieval","case":"regression","run_id":"20260729T180742Z-84678ae7","verified":true,"total_tokens":23421},
+    {"strategy":"model_with_retrieval","case":"replan","run_id":"20260729T180802Z-d6bbc70a","verified":true,"total_tokens":28354},
+    {"strategy":"model_with_retrieval","case":"scope","run_id":"20260729T180823Z-54eac84b","verified":true,"total_tokens":27861}
+  ],
+  "limitations": [
+    "Ten small handcrafted tasks and one repetition per strategy.",
+    "Both model strategies reached the suite ceiling; no RAG quality improvement is established.",
+    "The retrieval strategy used 6890 more total tokens.",
+    "No cost estimate is reported without a versioned price snapshot and full token categories."
+  ]
+}
