@@ -52,6 +52,11 @@ class RepoPilotScheduler:
         self.phase_runner = phase_runner
         self.transitions = transition_policy or TransitionPolicy()
         self.budgets = budget_controller or BudgetController()
+        self._cancel_requested = False
+
+    def request_cancel(self) -> None:
+        """Request cancellation at the next workflow phase boundary."""
+        self._cancel_requested = True
 
     async def start(self, task: RepoTaskSpec) -> RepoRunState:
         run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ-") + uuid4().hex[:8]
@@ -108,6 +113,7 @@ class RepoPilotScheduler:
             create_state=lambda task: state,
             checkpoint=self.store.save_state,
             emit=self.store.append_event,
+            is_cancelled=lambda _: self._cancel_requested,
             budget_check=self._budget_reason,
         )
 

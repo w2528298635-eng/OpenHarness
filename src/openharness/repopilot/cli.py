@@ -12,6 +12,7 @@ from .benchmark import load_benchmark
 from .evaluation import EvaluationRunner, EvaluationStrategy
 from .phase_runner import OpenHarnessPhaseRunner
 from .scheduler import RepoPilotScheduler
+from .service import RepoPilotService
 from .store import RunStore
 from .task_loader import load_task
 from .verifier import PythonPytestVerifier
@@ -46,13 +47,17 @@ def _task_or_bad_parameter(task_file: Path):
         raise typer.BadParameter(str(exc), param_hint="task") from exc
 
 
+def _service() -> RepoPilotService:
+    return RepoPilotService(_scheduler)
+
+
 @repopilot_app.command("run")
 def run_command(
     task: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
 ) -> None:
     """Start a repair from a YAML task specification."""
     spec = _task_or_bad_parameter(task)
-    state = asyncio.run(_scheduler(spec.repo_path, spec.budgets.verify_timeout_seconds).start(spec))
+    state = asyncio.run(_service().start(spec))
     typer.echo(f"run_id: {state.run_id}")
     typer.echo(f"phase: {state.phase.value}")
     typer.echo(f"reason: {state.terminal_reason or 'verified'}")
@@ -80,8 +85,7 @@ def resume_command(
     repo_path = repo or Path.cwd()
     store = RunStore(repo_path)
     state = store.load_state(run_id)
-    scheduler = _scheduler(repo_path, state.task.budgets.verify_timeout_seconds)
-    state = asyncio.run(scheduler.resume(run_id))
+    state = asyncio.run(_service().resume(run_id, repo_path))
     typer.echo(f"run_id: {state.run_id}")
     typer.echo(f"phase: {state.phase.value}")
     if state.phase.value != "COMPLETE":
@@ -200,3 +204,35 @@ def evaluate_command(
     )
     typer.echo(report.model_dump_json(indent=2))
     typer.echo(f"reports: {destination.resolve()}")
+
+
+@repopilot_app.command("serve")
+def serve_command(
+    host: Annotated[str, typer.Option("--host")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", min=1, max=65535)] = 8000,
+    unsafe_local_demo: Annotated[
+        bool,
+        typer.Option(
+            "--unsafe-local-demo",
+            help="Allow binding this unauthenticated local demo API beyond loopback.",
+        ),
+    ] = False,
+) -> None:
+    """Serve the local RepoPilot HTTP adapter."""
+    if host not in {"127.0.0.1", "localhost", "::1"} and not unsafe_local_demo:
+        raise typer.BadParameter(
+            "non-loopback binding requires --unsafe-local-demo",
+            param_hint="host",
+        )
+    try:
+        import uvicorn
+    except ImportError as exc:
+        raise typer.BadParameter(
+            "API dependencies are missing; install OpenHarness with the 'api' extra"
+        ) from exc
+    uvicorn.run(
+        "openharness.repopilot.api:create_app",
+        factory=True,
+        host=host,
+        port=port,
+    )
