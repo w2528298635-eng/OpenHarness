@@ -244,7 +244,12 @@ class RepoPilotScheduler:
             verification_checks=len(state.verification_history),
             repair_attempts=state.budgets.repair_attempts,
             replan_attempts=state.budgets.replan_attempts,
-            token_usage=TokenUsage(total_tokens=state.budgets.total_tokens or 0),
+            token_usage=TokenUsage(
+                input_tokens=state.budgets.input_tokens,
+                output_tokens=state.budgets.output_tokens,
+                cache_hit_tokens=state.budgets.cache_hit_tokens,
+                total_tokens=state.budgets.total_tokens or 0,
+            ),
             changed_files=state.changed_files,
             artifacts={
                 "state": str(self.store.run_dir(state.run_id) / "state.json"),
@@ -268,7 +273,14 @@ class RepoPilotScheduler:
         if context is not None:
             run_kwargs["retrieved_context"] = context.rendered
         output = await self.phase_runner.run(phase, state, state.worktree_path, **run_kwargs)
-        if output.tokens_used is not None:
+        if output.token_usage is not None:
+            state.budgets.input_tokens += output.token_usage.input_tokens
+            state.budgets.output_tokens += output.token_usage.output_tokens
+            state.budgets.cache_hit_tokens += output.token_usage.cache_hit_tokens
+            used = output.token_usage.total_tokens
+            if used is not None:
+                state.budgets.total_tokens = (state.budgets.total_tokens or 0) + used
+        elif output.tokens_used is not None:
             state.budgets.total_tokens = (state.budgets.total_tokens or 0) + output.tokens_used
         for action in output.actions:
             signature = json.dumps(

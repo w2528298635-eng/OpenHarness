@@ -14,8 +14,3 @@ def test_evaluation_suite_has_ten_independent_cases() -> None:
         case_root = case.task.parent
         assert (case_root / "repo" / "test_app.py").exists()
         assert (case_root / "fix.patch").exists()
-        assert not any(
-            part in {".git", ".openharness", ".pytest_cache"}
-            for path in case_root.rglob("*")
-            for part in path.relative_to(case_root).parts
-        )

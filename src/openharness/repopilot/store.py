@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +15,12 @@ from .models import RepoRunState
 class RunStore:
     def __init__(self, repo_root: Path):
         self.repo_root = repo_root.resolve()
-        self.root = self.repo_root / ".openharness" / "repopilot" / "runs"
+        configured_root = os.environ.get("OPENHARNESS_REPOPILOT_RUN_ROOT")
+        if configured_root:
+            repo_key = sha256(str(self.repo_root).encode()).hexdigest()[:12]
+            self.root = Path(configured_root).expanduser().resolve() / repo_key / "runs"
+        else:
+            self.root = self.repo_root / ".openharness" / "repopilot" / "runs"
         self.event_warnings: list[str] = []
 
     def run_dir(self, run_id: str) -> Path:
@@ -89,6 +96,14 @@ class RunStore:
         )
 
     def write_text(self, run_id: str, name: str, text: str) -> Path:
-        target = self.run_dir(run_id) / name
-        target.write_text(text, encoding="utf-8")
-        return target
+        directory = self.run_dir(run_id)
+        target = directory / name
+        for attempt in range(3):
+            directory.mkdir(parents=True, exist_ok=True)
+            try:
+                target.write_text(text, encoding="utf-8")
+                return target
+            except FileNotFoundError:
+                if attempt == 2:
+                    raise
+        raise AssertionError("unreachable")

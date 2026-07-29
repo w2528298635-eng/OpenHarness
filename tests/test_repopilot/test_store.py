@@ -40,6 +40,59 @@ def test_orphaned_temporary_file_does_not_replace_durable_state(tmp_path: Path) 
     assert store.load_state("run-1").phase is Phase.PRECHECK
 
 
+def test_artifact_write_recreates_missing_run_directory(tmp_path: Path) -> None:
+    store = RunStore(tmp_path)
+    store.create(_state(tmp_path))
+    run_dir = store.run_dir("run-1")
+    for path in run_dir.iterdir():
+        path.unlink()
+    run_dir.rmdir()
+
+    written = store.write_text("run-1", "context.json", "{}")
+
+    assert written.read_text(encoding="utf-8") == "{}"
+
+
+def test_artifact_write_retries_transient_missing_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = RunStore(tmp_path)
+    store.create(_state(tmp_path))
+    original_write_text = Path.write_text
+    attempts = 0
+
+    def transient_write(path: Path, *args, **kwargs):
+        nonlocal attempts
+        if path.name == "context.json" and attempts == 0:
+            attempts += 1
+            raise FileNotFoundError(path)
+        return original_write_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", transient_write)
+
+    written = store.write_text("run-1", "context.json", "{}")
+
+    assert attempts == 1
+    assert written.read_text(encoding="utf-8") == "{}"
+
+
+def test_configured_run_root_keeps_artifacts_outside_repository(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    central = tmp_path / "central"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.setenv("OPENHARNESS_REPOPILOT_RUN_ROOT", str(central))
+
+    store = RunStore(repo)
+    store.create(_state(repo))
+
+    assert store.root.is_relative_to(central)
+    assert not (repo / ".openharness").exists()
+
+
 def test_store_loads_legacy_events_as_typed_events(tmp_path: Path) -> None:
     store = RunStore(tmp_path)
     store.create(_state(tmp_path))

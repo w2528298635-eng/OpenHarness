@@ -4,6 +4,7 @@ from pathlib import Path
 from openharness.repopilot.evaluation import (
     EvaluationCaseResult,
     EvaluationReport,
+    EvaluationRunner,
     EvaluationStrategy,
     aggregate_evaluation,
     write_evaluation_report,
@@ -78,3 +79,30 @@ def test_report_writers_preserve_every_run(tmp_path: Path) -> None:
 
     assert result.run_id in json_path.read_text(encoding="utf-8")
     assert "scripted" in markdown_path.read_text(encoding="utf-8")
+
+
+def test_materialize_excludes_generated_runtime_artifacts(tmp_path: Path) -> None:
+    case = tmp_path / "case"
+    repo = case / "repo"
+    (repo / "__pycache__").mkdir(parents=True)
+    (repo / ".pytest_cache").mkdir()
+    (repo / ".openharness").mkdir()
+    (repo / "app.py").write_text("x = 1\n", encoding="utf-8")
+    (repo / "__pycache__" / "app.pyc").write_bytes(b"cache")
+    (repo / ".pytest_cache" / "state").write_text("cache", encoding="utf-8")
+    (repo / ".openharness" / "state").write_text("run", encoding="utf-8")
+    task = case / "task.yaml"
+    task.write_text(
+        "repo_path: repo\nissue: x\nverify_command: [pytest]\n",
+        encoding="utf-8",
+    )
+    destination = tmp_path / "copy"
+    runner = EvaluationRunner(lambda *_: None)
+
+    copied_task = runner._materialize(task, destination)
+
+    assert copied_task.exists()
+    assert (destination / "repo" / "app.py").exists()
+    assert not (destination / "repo" / "__pycache__").exists()
+    assert not (destination / "repo" / ".pytest_cache").exists()
+    assert not (destination / "repo" / ".openharness").exists()

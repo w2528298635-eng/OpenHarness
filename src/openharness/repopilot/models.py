@@ -45,6 +45,9 @@ class BudgetUsage(BaseModel):
     repair_attempts: int = 0
     replan_attempts: int = 0
     total_tokens: int | None = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_hit_tokens: int = 0
     repeated_actions: int = 0
     repeated_diffs: int = 0
 

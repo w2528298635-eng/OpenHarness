@@ -223,7 +223,17 @@ class EvaluationRunner:
         source = task_path.parent
         if destination.exists():
             shutil.rmtree(destination, onerror=_clear_readonly_and_retry)
-        shutil.copytree(source, destination)
+        shutil.copytree(
+            source,
+            destination,
+            ignore=shutil.ignore_patterns(
+                ".git",
+                ".openharness",
+                ".pytest_cache",
+                "__pycache__",
+                "*.pyc",
+            ),
+        )
         repo = destination / "repo"
         self._git(repo, "init", "-q")
         self._git(repo, "config", "user.email", "repopilot@example.invalid")

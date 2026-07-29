@@ -1,5 +1,5 @@
-from missing_optional_package import formatter
+from formatter import format_title
 
 
 def greeting(name):
-    return f"Hello, {name}"
+    return format_title(name)

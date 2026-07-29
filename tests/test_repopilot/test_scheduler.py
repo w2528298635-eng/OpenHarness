@@ -8,6 +8,7 @@ from openharness.repopilot.models import (
     Phase,
     PhaseRunResult,
     RepoTaskSpec,
+    TokenUsage,
     VerificationResult,
 )
 from openharness.repopilot.scheduler import RepoPilotScheduler
@@ -93,6 +94,14 @@ class ContextCapturingRunner(FakeRunner):
             cwd,
             diff_summary=diff_summary,
         )
+
+
+class DetailedUsageRunner(FakeRunner):
+    async def run(self, phase, state, cwd, *, diff_summary=""):
+        result = await super().run(phase, state, cwd, diff_summary=diff_summary)
+        result.token_usage = TokenUsage(input_tokens=7, output_tokens=3)
+        result.tokens_used = 10
+        return result
 
 
 def verification(passed: bool, signature: str | None = None):
@@ -185,6 +194,29 @@ async def test_retrieval_writes_trace_and_supplies_analyze_context(tmp_path: Pat
     assert "broken = True" in analyze_context
     traces = list(store.run_dir(state.run_id).glob("context-analyze-*.json"))
     assert len(traces) == 1
+
+
+@pytest.mark.asyncio
+async def test_scheduler_persists_detailed_model_usage(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    store = RunStore(repo)
+    scheduler = RepoPilotScheduler(
+        store=store,
+        workspace=FakeWorkspace(),
+        verifier=FakeVerifier([verification(False, "baseline"), verification(True)]),
+        phase_runner=DetailedUsageRunner(),
+    )
+
+    state = await scheduler.start(
+        RepoTaskSpec(repo_path=repo, issue="broken", verify_command=["pytest"])
+    )
+    summary = json.loads((store.run_dir(state.run_id) / "summary.json").read_text(encoding="utf-8"))
+
+    assert state.budgets.input_tokens == 21
+    assert state.budgets.output_tokens == 9
+    assert state.budgets.total_tokens == 30
+    assert summary["token_usage"]["input_tokens"] == 21
 
 
 @pytest.mark.asyncio

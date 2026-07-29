@@ -18,6 +18,8 @@ def test_discount_example_is_reproducible_and_manifests_load(tmp_path: Path) -> 
             ".openharness-repopilot-worktrees",
             ".pytest_cache",
             "__pycache__",
+            ".git",
+            "*.pyc",
         ),
     )
     repo = target / "discount_bug"
