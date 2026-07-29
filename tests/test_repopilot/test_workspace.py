@@ -1,3 +1,4 @@
+import hashlib
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -46,7 +47,9 @@ def test_diff_signature_is_stable() -> None:
 
 
 @pytest.mark.asyncio
-async def test_default_worktree_storage_is_next_to_repository(tmp_path: Path, monkeypatch) -> None:
+async def test_default_worktree_storage_uses_short_user_cache_root(
+    tmp_path: Path, monkeypatch
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     captured = {}
@@ -59,7 +62,36 @@ async def test_default_worktree_storage_is_next_to_repository(tmp_path: Path, mo
     workspace = WorkspaceManager()
     await workspace.create(repo, "run-1")
 
-    assert captured["base_dir"] == tmp_path / ".openharness-repopilot-worktrees" / "repo"
+    repo_key = hashlib.sha256(str(repo.resolve()).encode()).hexdigest()[:10]
+    assert (
+        captured["base_dir"] == Path.home() / ".openharness" / "repopilot" / "worktrees" / repo_key
+    )
+
+
+@pytest.mark.asyncio
+async def test_explicit_worktree_root_and_slug_are_compact(tmp_path: Path, monkeypatch) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    captured = {}
+
+    class RecordingManager(FakeWorktrees):
+        def __init__(self, base_dir):
+            captured["base_dir"] = base_dir
+
+        async def create_worktree(self, repo_path, slug, branch=None, agent_id=None):
+            captured["slug"] = slug
+            return await super().create_worktree(repo_path, slug, branch, agent_id)
+
+    monkeypatch.setattr("openharness.repopilot.workspace.WorktreeManager", RecordingManager)
+    root = tmp_path / "short"
+
+    info = await WorkspaceManager(base_path=root).create(repo, "20260730T120000Z-12345678")
+
+    assert (
+        captured["base_dir"] == root / hashlib.sha256(str(repo.resolve()).encode()).hexdigest()[:10]
+    )
+    assert len(captured["slug"]) == 12
+    assert info.run_id == "20260730T120000Z-12345678"
 
 
 @pytest.mark.asyncio

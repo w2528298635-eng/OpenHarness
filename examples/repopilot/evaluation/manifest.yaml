@@ -1,0 +1,12 @@
+name: repopilot-10-task-repair-suite
+cases:
+  - {id: boundary, task: tasks/boundary/task.yaml}
+  - {id: exception, task: tasks/exception/task.yaml}
+  - {id: branching, task: tasks/branching/task.yaml}
+  - {id: normalization, task: tasks/normalization/task.yaml}
+  - {id: collection_import, task: tasks/collection_import/task.yaml}
+  - {id: multi_file, task: tasks/multi_file/task.yaml}
+  - {id: mutation, task: tasks/mutation/task.yaml}
+  - {id: regression, task: tasks/regression/task.yaml}
+  - {id: replan, task: tasks/replan/task.yaml}
+  - {id: scope, task: tasks/scope/task.yaml}

@@ -3,6 +3,66 @@ from __future__ import annotations
 import json
 
 from .models import AnalysisResult, Phase, RepairPlan, RepoRunState
+from .prompt_registry import PromptRegistry, PromptTemplate
+
+PROMPT_VERSION = "2"
+
+_COMMON = """You are operating inside one bounded phase of RepoPilot.
+Follow the phase boundary exactly. Only the verifier may declare a repair successful;
+never claim that tests passed unless a verifier result is present.
+
+Runtime context:
+{context}
+
+"""
+
+_REGISTRY = PromptRegistry()
+_REGISTRY.register(
+    PromptTemplate(
+        name="analyze",
+        version=PROMPT_VERSION,
+        template=_COMMON
+        + """Goal: locate the root cause and cite evidence from real repository files.
+This phase is read-only: you must not modify any file.
+Return only JSON matching the AnalysisResult schema:
+{schema}""",
+        required_variables=frozenset({"context", "schema"}),
+    )
+)
+for name in ("plan", "replan"):
+    _REGISTRY.register(
+        PromptTemplate(
+            name=name,
+            version=PROMPT_VERSION,
+            template=_COMMON
+            + """Goal: produce the smallest repair plan with an explicit file scope.
+This phase is read-only: you must not modify any file.
+Return only JSON matching the RepairPlan schema:
+{schema}""",
+            required_variables=frozenset({"context", "schema"}),
+        )
+    )
+for name in ("execute", "repair"):
+    _REGISTRY.register(
+        PromptTemplate(
+            name=name,
+            version=PROMPT_VERSION,
+            template=_COMMON
+            + """Goal: edit code according to the validated plan and current evidence.
+Do not change the verification command, do not use a shell, and do not leave the
+allowed paths. After editing, briefly state the actual change without inventing test
+results.""",
+            required_variables=frozenset({"context"}),
+        )
+    )
+
+_PHASE_NAMES = {
+    Phase.ANALYZE: "analyze",
+    Phase.PLAN: "plan",
+    Phase.REPLAN: "replan",
+    Phase.EXECUTE: "execute",
+    Phase.REPAIR: "repair",
+}
 
 
 def _remaining(state: RepoRunState) -> dict[str, int | None]:
@@ -20,41 +80,50 @@ def _remaining(state: RepoRunState) -> dict[str, int | None]:
     }
 
 
-def build_phase_prompt(phase: Phase, state: RepoRunState, *, diff_summary: str = "") -> str:
+def prompt_version_for_phase(phase: Phase) -> str:
+    if phase not in _PHASE_NAMES:
+        raise ValueError(f"phase does not use a model prompt: {phase}")
+    return PROMPT_VERSION
+
+
+def build_phase_prompt(
+    phase: Phase,
+    state: RepoRunState,
+    *,
+    diff_summary: str = "",
+    retrieved_context: str = "",
+) -> str:
+    try:
+        name = _PHASE_NAMES[phase]
+    except KeyError as exc:
+        raise ValueError(f"phase does not use a model prompt: {phase}") from exc
     context = {
-        "问题": state.task.issue,
-        "允许路径": state.task.allowed_paths,
-        "已有分析": state.analysis.model_dump(mode="json") if state.analysis else None,
-        "已有计划": state.plan.model_dump(mode="json") if state.plan else None,
-        "最近验证": (
+        "issue": state.task.issue,
+        "allowed_paths": state.task.allowed_paths,
+        "analysis": state.analysis.model_dump(mode="json") if state.analysis else None,
+        "plan": state.plan.model_dump(mode="json") if state.plan else None,
+        "latest_verification": (
             state.verification_history[-1].model_dump(mode="json")
             if state.verification_history
             else None
         ),
-        "当前差异摘要": diff_summary,
-        "剩余预算": _remaining(state),
+        "diff_summary": diff_summary,
+        "retrieved_repository_context": retrieved_context or None,
+        "remaining_budget": _remaining(state),
     }
-    common = (
-        "你正在 RepoPilot 的一个受限阶段中。严格服从阶段边界。"
-        "只有验证器可以宣布修复成功；你不得自行声称测试已经通过。\n"
-        f"上下文：{json.dumps(context, ensure_ascii=False)}\n"
-    )
+    variables = {
+        "context": json.dumps(context, ensure_ascii=False, sort_keys=True),
+    }
     if phase is Phase.ANALYZE:
-        return (
-            common + "目标：定位根因并引用真实代码证据。不得修改任何文件。"
-            "最终只输出符合 AnalysisResult JSON Schema 的 JSON："
-            + json.dumps(AnalysisResult.model_json_schema(), ensure_ascii=False)
+        variables["schema"] = json.dumps(
+            AnalysisResult.model_json_schema(),
+            ensure_ascii=False,
+            sort_keys=True,
         )
-    if phase in {Phase.PLAN, Phase.REPLAN}:
-        return (
-            common + "目标：制定最小、文件范围明确的修复计划。不得修改文件。"
-            "最终只输出符合 RepairPlan JSON Schema 的 JSON："
-            + json.dumps(RepairPlan.model_json_schema(), ensure_ascii=False)
+    elif phase in {Phase.PLAN, Phase.REPLAN}:
+        variables["schema"] = json.dumps(
+            RepairPlan.model_json_schema(),
+            ensure_ascii=False,
+            sort_keys=True,
         )
-    if phase in {Phase.EXECUTE, Phase.REPAIR}:
-        return (
-            common + "目标：按计划编辑代码，仅处理验证器给出的证据。"
-            "不得修改验证命令，不得使用 shell，不得越过允许路径。"
-            "完成编辑后简短说明实际修改；不要输出虚构测试结果。"
-        )
-    raise ValueError(f"phase does not use a model prompt: {phase}")
+    return _REGISTRY.render(name, version=PROMPT_VERSION, **variables)

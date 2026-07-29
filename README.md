@@ -15,6 +15,14 @@
 
 This fork also includes [RepoPilot](docs/repopilot.md), a deterministic local Python bug-repair scheduler built around the OpenHarness Agent loop.
 
+RepoPilot now includes a reusable workflow runtime, bounded recovery, composite
+verification, Git worktree isolation, typed run telemetry, versioned prompts,
+explainable local repository retrieval, a 10-task evaluation suite, a local FastAPI
+adapter, and a second read-only repository-insight workflow. See the
+[architecture](docs/repopilot-architecture.md),
+[measured evaluation](docs/repopilot-evaluation.md), and
+[resume/interview guide](docs/repopilot-resume-and-interview.md).
+
 **ohmo** is a personal AI agent built on OpenHarness — not another chatbot, but an assistant that actually works for you over long sessions. Chat with ohmo in Feishu / Slack / Telegram / Discord, and it forks branches, writes code, runs tests, and opens PRs on its own. ohmo runs on your existing Claude Code or Codex subscription — no extra API key needed.
 
 **Join the community**: contribute **Harness** for open agent development.

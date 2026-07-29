@@ -1,18 +1,27 @@
 from __future__ import annotations
 
 import json
+import os
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
 
+from .events import RunEvent, RunEventKind
 from .models import RepoRunState
 
 
 class RunStore:
     def __init__(self, repo_root: Path):
         self.repo_root = repo_root.resolve()
-        self.root = self.repo_root / ".openharness" / "repopilot" / "runs"
+        configured_root = os.environ.get("OPENHARNESS_REPOPILOT_RUN_ROOT")
+        if configured_root:
+            repo_key = sha256(str(self.repo_root).encode()).hexdigest()[:12]
+            self.root = Path(configured_root).expanduser().resolve() / repo_key / "runs"
+        else:
+            self.root = self.repo_root / ".openharness" / "repopilot" / "runs"
+        self.event_warnings: list[str] = []
 
     def run_dir(self, run_id: str) -> Path:
         return self.root / run_id
@@ -36,7 +45,7 @@ class RunStore:
             (self.run_dir(run_id) / "state.json").read_text(encoding="utf-8")
         )
 
-    def append_event(self, event: BaseModel | dict[str, Any]) -> None:
+    def append_event(self, event: BaseModel | dict[str, Any]) -> bool:
         if isinstance(event, BaseModel):
             payload = event.model_dump(mode="json")
             run_id = getattr(event, "run_id", None)
@@ -50,8 +59,35 @@ class RunStore:
             target = candidates[0]
         else:
             target = self.run_dir(str(run_id))
-        with (target / "events.jsonl").open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
+        try:
+            with (target / "events.jsonl").open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
+        except OSError as exc:
+            self.event_warnings.append(f"event_write_failed: {exc}")
+            return False
+        return True
+
+    def load_events(self, run_id: str) -> list[RunEvent]:
+        events: list[RunEvent] = []
+        source = self.run_dir(run_id) / "events.jsonl"
+        if not source.exists():
+            return events
+        for line in source.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            payload = json.loads(line)
+            if "schema_version" in payload and "run_id" in payload:
+                events.append(RunEvent.model_validate(payload))
+            else:
+                events.append(
+                    RunEvent.create(
+                        run_id=run_id,
+                        kind=RunEventKind.LEGACY,
+                        phase=payload.get("phase"),
+                        data=payload,
+                    )
+                )
+        return events
 
     def write_json(self, run_id: str, name: str, value: BaseModel | Any) -> Path:
         payload = value.model_dump(mode="json") if isinstance(value, BaseModel) else value
@@ -60,6 +96,14 @@ class RunStore:
         )
 
     def write_text(self, run_id: str, name: str, text: str) -> Path:
-        target = self.run_dir(run_id) / name
-        target.write_text(text, encoding="utf-8")
-        return target
+        directory = self.run_dir(run_id)
+        target = directory / name
+        for attempt in range(3):
+            directory.mkdir(parents=True, exist_ok=True)
+            try:
+                target.write_text(text, encoding="utf-8")
+                return target
+            except FileNotFoundError:
+                if attempt == 2:
+                    raise
+        raise AssertionError("unreachable")

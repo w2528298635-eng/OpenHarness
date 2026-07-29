@@ -5,7 +5,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 def utc_now() -> datetime:
@@ -22,6 +22,10 @@ class Phase(str, Enum):
     REPLAN = "REPLAN"
     COMPLETE = "COMPLETE"
     FAILED = "FAILED"
+    INSIGHT_SCAN = "INSIGHT_SCAN"
+    INSIGHT_RETRIEVE = "INSIGHT_RETRIEVE"
+    INSIGHT_ANALYZE = "INSIGHT_ANALYZE"
+    INSIGHT_REPORT = "INSIGHT_REPORT"
 
 
 class BudgetConfig(BaseModel):
@@ -41,8 +45,40 @@ class BudgetUsage(BaseModel):
     repair_attempts: int = 0
     replan_attempts: int = 0
     total_tokens: int | None = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_hit_tokens: int = 0
     repeated_actions: int = 0
     repeated_diffs: int = 0
+
+
+class RetrievalConfig(BaseModel):
+    enabled: bool = False
+    max_file_bytes: int = Field(default=200_000, ge=1024)
+    max_chunk_chars: int = Field(default=4000, ge=200)
+    context_char_budget: int = Field(default=12_000, ge=500)
+    top_k: int = Field(default=12, ge=1, le=100)
+
+
+class TokenUsage(BaseModel):
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    cache_hit_tokens: int = Field(default=0, ge=0)
+    total_tokens: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def derive_total(self) -> TokenUsage:
+        if self.total_tokens is None:
+            self.total_tokens = self.input_tokens + self.output_tokens
+        return self
+
+    def __add__(self, other: TokenUsage) -> TokenUsage:
+        return TokenUsage(
+            input_tokens=self.input_tokens + other.input_tokens,
+            output_tokens=self.output_tokens + other.output_tokens,
+            cache_hit_tokens=self.cache_hit_tokens + other.cache_hit_tokens,
+            total_tokens=(self.total_tokens or 0) + (other.total_tokens or 0),
+        )
 
 
 class RepoTaskSpec(BaseModel):
@@ -51,6 +87,7 @@ class RepoTaskSpec(BaseModel):
     verify_command: list[str]
     allowed_paths: list[str] | None = None
     budgets: BudgetConfig = Field(default_factory=BudgetConfig)
+    retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
 
     @field_validator("issue")
     @classmethod
@@ -145,6 +182,7 @@ class PhaseRunResult(BaseModel):
     structured: dict[str, Any] | None = None
     final_text: str = ""
     tokens_used: int | None = None
+    token_usage: TokenUsage | None = None
     actions: list[ActionRecord] = Field(default_factory=list)
     observations: list[ObservationRecord] = Field(default_factory=list)
 
@@ -156,6 +194,8 @@ class RepoRunState(BaseModel):
     original_repo: Path | None = None
     worktree_path: Path | None = None
     worktree_branch: str | None = None
+    worktree_slug: str | None = None
+    worktree_root: Path | None = None
     analysis: AnalysisResult | None = None
     plan: RepairPlan | None = None
     verification_history: list[VerificationResult] = Field(default_factory=list)

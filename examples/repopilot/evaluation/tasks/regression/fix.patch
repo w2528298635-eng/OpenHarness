@@ -1,0 +1,7 @@
+diff --git a/app.py b/app.py
+--- a/app.py
++++ b/app.py
+@@ -1,2 +1,2 @@
+ def average(total, count):
+-    return total // count
++    return total / count

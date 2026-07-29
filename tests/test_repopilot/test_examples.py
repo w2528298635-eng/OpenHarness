@@ -10,7 +10,18 @@ from openharness.repopilot.task_loader import load_task
 def test_discount_example_is_reproducible_and_manifests_load(tmp_path: Path) -> None:
     source = Path(__file__).parents[2] / "examples" / "repopilot"
     target = tmp_path / "repopilot"
-    shutil.copytree(source, target)
+    shutil.copytree(
+        source,
+        target,
+        ignore=shutil.ignore_patterns(
+            ".openharness",
+            ".openharness-repopilot-worktrees",
+            ".pytest_cache",
+            "__pycache__",
+            ".git",
+            "*.pyc",
+        ),
+    )
     repo = target / "discount_bug"
     subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
     subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)

@@ -1,0 +1,7 @@
+diff --git a/app.py b/app.py
+--- a/app.py
++++ b/app.py
+@@ -1,2 +1,2 @@
+ def parse_count(value):
+-    return int(value)
++    return 0 if value is None else int(value)

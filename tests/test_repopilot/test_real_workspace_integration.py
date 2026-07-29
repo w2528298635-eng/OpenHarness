@@ -89,7 +89,7 @@ async def test_real_worktree_edit_and_pytest_leave_original_untouched(
     _commit_baseline(repo)
     scheduler = RepoPilotScheduler(
         store=RunStore(repo),
-        workspace=WorkspaceManager(),
+        workspace=WorkspaceManager(base_path=Path(sys.executable).parents[2] / ".rp-test-wt"),
         verifier=PythonPytestVerifier(timeout_seconds=30),
         phase_runner=EditingRunner(),
     )
@@ -107,3 +107,10 @@ async def test_real_worktree_edit_and_pytest_leave_original_untouched(
     assert "rate < 1" in (repo / "discount.py").read_text(encoding="utf-8")
     assert "rate <= 1" in (state.worktree_path / "discount.py").read_text(encoding="utf-8")
     assert (repo / ".openharness" / "repopilot" / "runs" / state.run_id / "report.md").exists()
+
+    await scheduler.workspace.cleanup(
+        repo,
+        state.worktree_path,
+        force=True,
+    )
+    assert not state.worktree_path.exists()

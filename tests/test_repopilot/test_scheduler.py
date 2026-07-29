@@ -8,6 +8,7 @@ from openharness.repopilot.models import (
     Phase,
     PhaseRunResult,
     RepoTaskSpec,
+    TokenUsage,
     VerificationResult,
 )
 from openharness.repopilot.scheduler import RepoPilotScheduler
@@ -80,6 +81,29 @@ class FakeRunner:
         return PhaseRunResult(phase=phase, structured=structured, tokens_used=5)
 
 
+class ContextCapturingRunner(FakeRunner):
+    def __init__(self):
+        super().__init__()
+        self.contexts = []
+
+    async def run(self, phase, state, cwd, *, diff_summary="", retrieved_context=""):
+        self.contexts.append((phase, retrieved_context))
+        return await super().run(
+            phase,
+            state,
+            cwd,
+            diff_summary=diff_summary,
+        )
+
+
+class DetailedUsageRunner(FakeRunner):
+    async def run(self, phase, state, cwd, *, diff_summary=""):
+        result = await super().run(phase, state, cwd, diff_summary=diff_summary)
+        result.token_usage = TokenUsage(input_tokens=7, output_tokens=3)
+        result.tokens_used = 10
+        return result
+
+
 def verification(passed: bool, signature: str | None = None):
     return VerificationResult(
         attempt=0,
@@ -128,6 +152,71 @@ async def test_successful_run_can_only_complete_after_verification(tmp_path: Pat
     assert len(state.verification_history) == 2
     assert (store.run_dir(state.run_id) / "report.md").exists()
     assert store.load_state(state.run_id).phase is Phase.COMPLETE
+    events = [
+        json.loads(line)
+        for line in (store.run_dir(state.run_id) / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert any(
+        event.get("schema_version") == 1 and event.get("kind") == "phase_started"
+        for event in events
+    )
+
+
+@pytest.mark.asyncio
+async def test_retrieval_writes_trace_and_supplies_analyze_context(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text(
+        "def calculate_discount(total):\n    return total * 0.9\n",
+        encoding="utf-8",
+    )
+    store = RunStore(repo)
+    runner = ContextCapturingRunner()
+    scheduler = RepoPilotScheduler(
+        store=store,
+        workspace=FakeWorkspace(),
+        verifier=FakeVerifier([verification(False, "baseline"), verification(True)]),
+        phase_runner=runner,
+    )
+
+    state = await scheduler.start(
+        RepoTaskSpec(
+            repo_path=repo,
+            issue="broken",
+            verify_command=["pytest"],
+            retrieval={"enabled": True, "context_char_budget": 2000},
+        )
+    )
+
+    analyze_context = next(context for phase, context in runner.contexts if phase is Phase.ANALYZE)
+    assert "broken = True" in analyze_context
+    traces = list(store.run_dir(state.run_id).glob("context-analyze-*.json"))
+    assert len(traces) == 1
+
+
+@pytest.mark.asyncio
+async def test_scheduler_persists_detailed_model_usage(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    store = RunStore(repo)
+    scheduler = RepoPilotScheduler(
+        store=store,
+        workspace=FakeWorkspace(),
+        verifier=FakeVerifier([verification(False, "baseline"), verification(True)]),
+        phase_runner=DetailedUsageRunner(),
+    )
+
+    state = await scheduler.start(
+        RepoTaskSpec(repo_path=repo, issue="broken", verify_command=["pytest"])
+    )
+    summary = json.loads((store.run_dir(state.run_id) / "summary.json").read_text(encoding="utf-8"))
+
+    assert state.budgets.input_tokens == 21
+    assert state.budgets.output_tokens == 9
+    assert state.budgets.total_tokens == 30
+    assert summary["token_usage"]["input_tokens"] == 21
 
 
 @pytest.mark.asyncio

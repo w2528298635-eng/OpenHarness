@@ -7,10 +7,12 @@ build/
 .eggs/
 *.egg
 .pytest_cache/
+.tmp/
 .mypy_cache/
 .ruff_cache/
 .venv/
 .openharness-venv/
+.worktrees/
 venv/
 env/
 .env
@@ -29,6 +31,7 @@ frontend/terminal/node_modules/
 
 # User data (never commit API keys or session data)
 .openharness/
+.openharness-repopilot-worktrees/
 react_tui_smoke.txt
 
 # OS

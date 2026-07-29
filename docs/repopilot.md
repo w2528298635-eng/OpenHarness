@@ -1,99 +1,180 @@
-# RepoPilot：新手运行与源码导读
+# RepoPilot：从零运行代码修复 Agent
 
-RepoPilot 是 OpenHarness 上的一层“确定性项目经理”。OpenHarness 原本让模型在 ReAct 循环中自行判断下一步；RepoPilot 则把修 Bug 拆成固定阶段，并把是否成功的裁决权交给真实的 `pytest`。
+RepoPilot 是这个 fork 新增的代码修复 Agent 应用，不是 OpenHarness 上游自带功能。
+OpenHarness 提供模型调用、流式事件、工具注册和工具执行等通用基础设施；
+RepoPilot 在其上增加“分析—计划—修改—验证—恢复”的确定性工作流。
 
-## 它解决了什么问题
+可以把大模型理解为会阅读和写代码的工程师，把 OpenHarness 理解为工程师使用的
+电脑、工具箱和通信系统，把 RepoPilot 理解为项目经理、质量负责人和审计系统。
+模型提出分析并编辑代码，但只有真实验证器有权宣布修复成功。
 
-模型擅长读代码、提出假设和修改文件，但它可能误判“已经修好”。RepoPilot 的外层状态机负责流程，内层 OpenHarness Agent 只负责当前阶段：
+## 一次运行发生了什么
 
 ```text
-PRECHECK → ANALYZE → PLAN → EXECUTE → VERIFY
-                                      ├─ 通过 → COMPLETE
-                                      └─ 失败 → REPAIR / REPLAN → VERIFY
+读取 task.yaml
+  → 为本次运行创建隔离 Git worktree
+  → PRECHECK 运行原始测试，确认 Bug 确实存在
+  → ANALYZE 检索仓库并要求模型给出带源码证据的根因
+  → PLAN 要求模型给出受文件范围约束的修复计划
+  → EXECUTE 只开放受限读写工具，由模型编辑代码
+  → VERIFY 由调度器使用参数数组和 shell=False 运行 pytest
+  → 通过则 COMPLETE；失败则在预算内进入 REPAIR 或 REPLAN
+  → 每个阶段保存状态、事件、diff、验证日志和汇总
 ```
 
-- `PRECHECK`：先确认原始 Bug 确实能复现。
-- `ANALYZE`：只读代码，输出带证据的结构化根因。
-- `PLAN`：输出文件范围明确的修复计划。
-- `EXECUTE`：只开放读取和编辑工具，不开放 `bash`。
-- `VERIFY`：调度器用 `shell=False` 执行用户给定的 pytest 参数数组。
-- `REPAIR/REPLAN`：验证失败后，在预算内修补或换假设。
+这不是让模型在一个长对话里自由决定所有步骤。`WorkflowRuntime` 负责阶段调度，
+`TransitionPolicy` 负责确定性状态转移，OpenHarness 只在需要模型推理或编辑的阶段
+执行 Agent loop。
 
-面试亮点不是“再包一层 Prompt”，而是把概率性的模型决策与确定性的工程控制分开。
+## Windows / PowerShell 快速开始
 
-## Windows / PowerShell 快速运行
-
-先激活安装过 OpenHarness 的 Python 3.11 Conda 环境，然后准备示例仓库：
+先激活安装过 OpenHarness 的 Python 3.11 环境。在仓库根目录准备示例 Git 仓库：
 
 ```powershell
 cd examples\repopilot\discount_bug
 git init
-git add .
-git -c user.name=RepoPilot -c user.email=repopilot@example.com commit -m "buggy baseline"
+git add discount.py test_discount.py
+git -c user.name=RepoPilot -c user.email=repopilot@example.invalid commit -m "buggy baseline"
 python -m pytest -q
 cd ..\..\..
 ```
 
-测试应失败，证明 Bug 可复现。配置 OpenAI-compatible provider 后运行：
+此时应看到测试失败。配置 OpenAI-compatible provider。不要把密钥写进 YAML 或提交
+到 Git：
+
+```powershell
+$env:OPENHARNESS_MODEL = "deepseek-chat"
+$env:OPENHARNESS_BASE_URL = "https://api.deepseek.com"
+$env:OPENHARNESS_API_FORMAT = "openai"
+$env:OPENHARNESS_OPENAI_API_KEY = $env:DEEPSEEK_API_KEY
+```
+
+如果用户主目录不可写，显式使用短路径保存 worktree 和运行产物：
+
+```powershell
+$env:OPENHARNESS_REPOPILOT_WORKTREE_ROOT = "C:\repopilot-wt"
+$env:OPENHARNESS_REPOPILOT_RUN_ROOT = "C:\repopilot-runs"
+```
+
+运行：
 
 ```powershell
 openh repopilot run examples\repopilot\task.example.yaml
 ```
 
-终端会打印 `run_id`、最终状态和隔离工作树路径。原仓库不会被直接修改。
+真实烟测应输出类似：
+
+```text
+run_id: 20260729T175456Z-7080c6e3
+phase: COMPLETE
+reason: verified
+worktree: <isolated-worktree>
+```
+
+本次真实运行使用 DeepSeek，开启本地检索，耗时 21.57 秒，3 次模型阶段调用，
+记录 27,792 total tokens，只修改 `discount.py`，最终 `2 passed`。
+
+## 查看、恢复和清理
 
 ```powershell
 openh repopilot show <run-id> --repo examples\repopilot\discount_bug
 openh repopilot report <run-id> --repo examples\repopilot\discount_bug
 openh repopilot resume <run-id> --repo examples\repopilot\discount_bug
-openh repopilot benchmark examples\repopilot\benchmark.example.yaml
+openh repopilot cleanup <run-id> --repo examples\repopilot\discount_bug
 ```
 
-当前 benchmark 只报告实际 RepoPilot 运行数据，不虚构基线或提升比例。
+`cleanup` 只移除隔离 worktree，不删除运行报告；含未提交修改的 worktree 默认拒绝
+删除，需要明确传入 `--force`。
 
 ## 任务 YAML
 
 ```yaml
-repo_path: C:\path\to\your\git-repo
-issue: 清楚描述能复现的 Python Bug
+repo_path: C:\path\to\trusted-python-repository
+issue: 清楚描述能够复现的 Bug
 verify_command: [python, -m, pytest, -q, tests/test_target.py]
-allowed_paths: ["src/**", "tests/**"]
+allowed_paths: ["src/**"]
+retrieval:
+  enabled: true
+  max_file_bytes: 200000
+  max_chunk_chars: 4000
+  context_char_budget: 12000
+  top_k: 12
+budgets:
+  max_phase_calls: 8
+  max_repair_attempts: 3
+  max_replan_attempts: 2
+  max_wall_seconds: 1800
+  max_changed_files: 12
+  verify_timeout_seconds: 300
 ```
 
-验证命令必须是参数数组，不是 Shell 字符串。首版只接受 `pytest`、`py.test` 或 `<python> -m pytest`，不会自动安装依赖。
+验证命令必须是参数数组，只接受 `pytest`、`py.test` 或
+`<python> -m pytest`，不经 Shell 拼接。首版只运行受信任的本地 Python 仓库，
+Git worktree 是隔离副本，不是安全沙箱。
 
 ## 运行产物
 
-每次运行保存在原仓库：
+默认位置：
 
 ```text
-.openharness/repopilot/runs/<run-id>/
-  state.json
-  events.jsonl
-  analysis.json
-  plan.json
-  diff.patch
-  verification-<attempt>.json
-  verification-<attempt>.log
-  report.md
+<repo>/.openharness/repopilot/runs/<run-id>/
+  state.json                 可恢复状态
+  events.jsonl               脱敏、有类型的生命周期事件
+  analysis.json              结构化根因
+  plan.json                  结构化修复计划
+  context-analyze-*.json     检索选择轨迹与 Prompt 版本
+  diff.patch                 实际代码改动
+  verification-*.json/.log   测试结果和完整日志
+  summary.json               时长、调用、token、文件和产物索引
+  report.md                  人类可读报告
 ```
 
-`Action` 是模型或调度器准备做的动作，`Observation` 是动作的真实结果。二者都进入 `events.jsonl`，所以面试时可以展示一条完整、可追踪的 Agent 轨迹。
+`Action` 表示模型或调度器准备执行的动作，`Observation` 是动作的真实结果。
+Observation 必须回传给模型，因为模型需要它判断下一步；同时写入事件日志是为了
+失败复盘、断点恢复、评测和面试时展示完整轨迹。
 
-## 关键源码
+## 本地检索不是“接了向量库”
 
-- `repopilot/scheduler.py`：外层状态机。
-- `repopilot/phase_runner.py`：为每个模型阶段创建新的 OpenHarness Runtime。
-- `repopilot/tools.py`：阶段工具白名单。
-- `repopilot/verifier.py`：安全运行 pytest 并分类失败。
-- `repopilot/policy.py`：纯函数式转移与预算规则。
-- `repopilot/store.py`：原子检查点和事件日志。
-- `repopilot/workspace.py`：隔离工作树、diff 与路径边界。
+`RepositoryIndex` 会忽略 Git、缓存、虚拟环境、二进制和超大文件；Python 文件按
+AST 顶层类/函数切块，其他文本按大小切块。检索使用 TF-IDF 风格词项分数，并对
+精确符号名和路径加权。`ContextBuilder` 优先放入验证失败、已怀疑文件和高分片段，
+再按字符预算截断，同时保存每个片段的路径、行号、分数和选择原因。
 
-## 面试表达
+这个设计没有 embedding 依赖，适合本地小仓库和可解释实验；它不代表已经解决大型
+代码库的语义检索问题。
 
-“我没有重写 OpenHarness 的 ReAct 内核，而是在外层实现 Plan–Execute–Verify–Repair 状态机。模型负责非确定性的代码理解与编辑，调度器负责确定性的状态转移、预算、安全边界和 pytest 裁决。每个阶段使用新的 QueryEngine 和不同工具白名单，跨阶段只传 Pydantic 校验后的结构化状态，因此比让一个长对话自行决定是否完成更容易恢复、测试和审计。”
+## 评测、API 和第二工作流
 
-## 首版限制
+```powershell
+# 不调用模型：验证 10 个 fixture、补丁、测试和指标管线
+openh repopilot evaluate examples\repopilot\evaluation\manifest.yaml `
+  --strategy scripted --output .\evaluation-output
 
-仅支持受信任的本地 Python 仓库；不使用 Docker；不自动装依赖；不自动提交、合并或推送；不支持 GitHub PR/CI；不做多 Agent；benchmark 当前不包含原生 ReAct baseline。
+# 真实模型矩阵会产生 API 费用
+openh repopilot evaluate examples\repopilot\evaluation\manifest.yaml `
+  --strategy model_no_retrieval `
+  --strategy model_with_retrieval `
+  --allow-live-matrix `
+  --output .\evaluation-output
+
+# 只读、带源码引用的第二工作流
+openh repopilot insight src\openharness\repopilot `
+  --question "How does the workflow runtime checkpoint state?"
+```
+
+安装 API extra 后：
+
+```powershell
+pip install -e ".[api]"
+openh repopilot serve --host 127.0.0.1 --port 8000
+```
+
+`POST /runs` 返回后台 operation，`GET /operations/{id}` 查询完成状态，再使用真实
+run_id 查询状态、事件和产物。服务默认只允许 loopback；它是本地演示 API，没有
+身份认证或分布式 worker，不能直接暴露到公网。
+
+更多内容见：
+
+- [分层架构与时序](repopilot-architecture.md)
+- [真实评测方法与结果](repopilot-evaluation.md)
+- [简历表述与面试问答](repopilot-resume-and-interview.md)

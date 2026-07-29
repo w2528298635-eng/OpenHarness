@@ -10,7 +10,7 @@ def test_repopilot_help_lists_workflow_commands() -> None:
     result = runner.invoke(app, ["repopilot", "--help"])
 
     assert result.exit_code == 0
-    for command in ["run", "show", "resume", "report", "benchmark"]:
+    for command in ["run", "show", "resume", "report", "benchmark", "cleanup"]:
         assert command in result.stdout
 
 
