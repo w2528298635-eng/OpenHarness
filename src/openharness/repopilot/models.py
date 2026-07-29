@@ -45,6 +45,14 @@ class BudgetUsage(BaseModel):
     repeated_diffs: int = 0
 
 
+class RetrievalConfig(BaseModel):
+    enabled: bool = False
+    max_file_bytes: int = Field(default=200_000, ge=1024)
+    max_chunk_chars: int = Field(default=4000, ge=200)
+    context_char_budget: int = Field(default=12_000, ge=500)
+    top_k: int = Field(default=12, ge=1, le=100)
+
+
 class TokenUsage(BaseModel):
     input_tokens: int = Field(default=0, ge=0)
     output_tokens: int = Field(default=0, ge=0)
@@ -72,6 +80,7 @@ class RepoTaskSpec(BaseModel):
     verify_command: list[str]
     allowed_paths: list[str] | None = None
     budgets: BudgetConfig = Field(default_factory=BudgetConfig)
+    retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
 
     @field_validator("issue")
     @classmethod
