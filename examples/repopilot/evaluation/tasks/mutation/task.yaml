@@ -1,0 +1,4 @@
+repo_path: repo
+issue: with_default must not mutate the caller's list
+verify_command: [pytest, -q]
+allowed_paths: [app.py]

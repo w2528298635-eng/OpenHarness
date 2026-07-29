@@ -1,0 +1,4 @@
+repo_path: repo
+issue: slugify must normalize both spaces and underscores
+verify_command: [pytest, -q]
+allowed_paths: [app.py]

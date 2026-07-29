@@ -1,0 +1,7 @@
+diff --git a/helpers.py b/helpers.py
+--- a/helpers.py
++++ b/helpers.py
+@@ -1,2 +1,2 @@
+ def as_rate(percent):
+-    return percent / 10
++    return percent / 100

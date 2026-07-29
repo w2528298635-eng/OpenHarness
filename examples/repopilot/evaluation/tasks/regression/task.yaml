@@ -1,0 +1,4 @@
+repo_path: repo
+issue: average must preserve fractional values without breaking integers
+verify_command: [pytest, -q]
+allowed_paths: [app.py]

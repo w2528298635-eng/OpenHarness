@@ -1,0 +1,4 @@
+repo_path: repo
+issue: percentage conversion in the helper uses the wrong scale
+verify_command: [pytest, -q]
+allowed_paths: [helpers.py]

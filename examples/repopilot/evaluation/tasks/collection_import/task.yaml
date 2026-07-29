@@ -1,0 +1,4 @@
+repo_path: repo
+issue: remove the accidental missing runtime dependency that breaks test collection
+verify_command: [pytest, -q]
+allowed_paths: [app.py]

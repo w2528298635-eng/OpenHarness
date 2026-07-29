@@ -1,0 +1,7 @@
+diff --git a/app.py b/app.py
+--- a/app.py
++++ b/app.py
+@@ -1,2 +1,2 @@
+ def normalize_username(value):
+-    return value.lower()
++    return value.strip().lower()

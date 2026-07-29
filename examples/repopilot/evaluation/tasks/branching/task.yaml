@@ -1,0 +1,4 @@
+repo_path: repo
+issue: VIP customers should receive free shipping
+verify_command: [pytest, -q]
+allowed_paths: [app.py]

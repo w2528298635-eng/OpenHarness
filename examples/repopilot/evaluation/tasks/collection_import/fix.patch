@@ -1,0 +1,9 @@
+diff --git a/app.py b/app.py
+--- a/app.py
++++ b/app.py
+@@ -1,5 +1,2 @@
+-from missing_optional_package import formatter
+-
+-
+ def greeting(name):
+     return f"Hello, {name}"

@@ -9,6 +9,7 @@ from typing import Annotated
 import typer
 
 from .benchmark import load_benchmark
+from .evaluation import EvaluationRunner, EvaluationStrategy
 from .phase_runner import OpenHarnessPhaseRunner
 from .scheduler import RepoPilotScheduler
 from .store import RunStore
@@ -157,3 +158,45 @@ def benchmark_command(
             indent=2,
         )
     )
+
+
+@repopilot_app.command("evaluate")
+def evaluate_command(
+    manifest: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+    strategy: Annotated[
+        list[EvaluationStrategy] | None,
+        typer.Option("--strategy", help="Repeat to compare multiple strategies."),
+    ] = None,
+    repetitions: Annotated[int, typer.Option("--repetitions", min=1)] = 1,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", help="Directory for reports and preserved workspaces."),
+    ] = None,
+    allow_live_matrix: Annotated[
+        bool,
+        typer.Option(
+            "--allow-live-matrix",
+            help="Acknowledge multiple paid model runs.",
+        ),
+    ] = False,
+) -> None:
+    """Run reproducible scripted or model repair strategies."""
+    strategies = strategy or [EvaluationStrategy.SCRIPTED]
+    live_runs = sum(item is not EvaluationStrategy.SCRIPTED for item in strategies)
+    case_count = len(load_benchmark(manifest).cases)
+    if live_runs * case_count * repetitions > case_count and not allow_live_matrix:
+        raise typer.BadParameter(
+            "multiple paid model matrices require --allow-live-matrix",
+            param_hint="strategy",
+        )
+    destination = output or manifest.resolve().parent / "reports"
+    report = asyncio.run(
+        EvaluationRunner(_scheduler).run(
+            manifest,
+            strategies,
+            output_dir=destination,
+            repetitions=repetitions,
+        )
+    )
+    typer.echo(report.model_dump_json(indent=2))
+    typer.echo(f"reports: {destination.resolve()}")
