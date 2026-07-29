@@ -1,6 +1,9 @@
 import json
 from pathlib import Path
 
+import pytest
+
+from openharness.repopilot.events import RunEvent, RunEventKind
 from openharness.repopilot.models import Phase, RepoRunState, RepoTaskSpec
 from openharness.repopilot.store import RunStore
 
@@ -35,3 +38,38 @@ def test_orphaned_temporary_file_does_not_replace_durable_state(tmp_path: Path) 
     (store.run_dir("run-1") / "state.json.tmp").write_text("broken", encoding="utf-8")
 
     assert store.load_state("run-1").phase is Phase.PRECHECK
+
+
+def test_store_loads_legacy_events_as_typed_events(tmp_path: Path) -> None:
+    store = RunStore(tmp_path)
+    store.create(_state(tmp_path))
+    store.append_event({"kind": "phase", "value": 1})
+
+    events = store.load_events("run-1")
+
+    assert len(events) == 1
+    assert events[0].run_id == "run-1"
+    assert events[0].kind is RunEventKind.LEGACY
+    assert events[0].data == {"kind": "phase", "value": 1}
+
+
+def test_event_write_failure_is_non_fatal_and_recorded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = RunStore(tmp_path)
+    store.create(_state(tmp_path))
+    original_open = Path.open
+
+    def broken_events_open(path: Path, *args, **kwargs):
+        if path.name == "events.jsonl":
+            raise OSError("disk unavailable")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", broken_events_open)
+
+    written = store.append_event(
+        RunEvent.create(run_id="run-1", kind=RunEventKind.RUN_STARTED)
+    )
+
+    assert written is False
+    assert store.event_warnings == ["event_write_failed: disk unavailable"]
