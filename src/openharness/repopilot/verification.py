@@ -291,9 +291,7 @@ class DiffScopeCheck:
             )
         for path in self.changed_files:
             normalized = path.replace("\\", "/")
-            sensitive = normalized == ".git" or normalized.startswith(
-                (".git/", ".openharness/")
-            )
+            sensitive = normalized == ".git" or normalized.startswith((".git/", ".openharness/"))
             outside_allowlist = self.allowed_paths and not any(
                 PurePath(normalized).match(pattern) for pattern in self.allowed_paths
             )
@@ -305,15 +303,11 @@ class DiffScopeCheck:
             required=True,
             fatal=True,
             category=(
-                FailureCategory.PASSED
-                if not violations
-                else FailureCategory.OUT_OF_SCOPE_DIFF
+                FailureCategory.PASSED if not violations else FailureCategory.OUT_OF_SCOPE_DIFF
             ),
             summary="passed" if not violations else f"out of scope: {', '.join(violations)}",
             failure_signature=(
-                None
-                if not violations
-                else normalize_failure_signature("\n".join(violations), "")
+                None if not violations else normalize_failure_signature("\n".join(violations), "")
             ),
         )
 

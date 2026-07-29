@@ -4,29 +4,100 @@ import asyncio
 import difflib
 import fnmatch
 import hashlib
+import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from openharness.swarm.worktree import WorktreeManager
 
 
-class WorkspaceManager:
-    def __init__(self, worktrees: Any | None = None):
-        self.worktrees = worktrees
+@dataclass(frozen=True)
+class WorkspaceLease:
+    run_id: str
+    slug: str
+    path: Path
+    branch: str
+    original_path: Path
+    base_dir: Path
 
-    async def create(self, repo_path: Path, run_id: str):
+
+class WorkspaceManager:
+    def __init__(
+        self,
+        worktrees: Any | None = None,
+        *,
+        base_path: Path | None = None,
+    ):
+        self.worktrees = worktrees
+        configured = os.environ.get("OPENHARNESS_REPOPILOT_WORKTREE_ROOT")
+        self.base_path = (
+            base_path.resolve()
+            if base_path is not None
+            else Path(configured).expanduser().resolve()
+            if configured
+            else Path.home() / ".openharness" / "repopilot" / "worktrees"
+        )
+        self._managers: dict[str, Any] = {}
+
+    async def create(self, repo_path: Path, run_id: str) -> WorkspaceLease:
+        repo_path = repo_path.resolve()
+        repo_key = hashlib.sha256(str(repo_path).encode()).hexdigest()[:10]
+        base_dir = self.base_path / repo_key
         manager = self.worktrees
         if manager is None:
-            manager = WorktreeManager(
-                repo_path.resolve().parent / ".openharness-repopilot-worktrees" / repo_path.name
-            )
-            self.worktrees = manager
-        return await manager.create_worktree(
-            repo_path.resolve(),
-            run_id,
+            manager = self._managers.get(repo_key)
+            if manager is None:
+                manager = WorktreeManager(base_dir)
+                self._managers[repo_key] = manager
+        slug = hashlib.sha256(run_id.encode()).hexdigest()[:12]
+        info = await manager.create_worktree(
+            repo_path,
+            slug,
             branch=f"repopilot/{run_id}",
             agent_id=run_id,
         )
+        return WorkspaceLease(
+            run_id=run_id,
+            slug=slug,
+            path=Path(info.path).resolve(),
+            branch=info.branch,
+            original_path=repo_path,
+            base_dir=Path(getattr(manager, "base_dir", base_dir)).resolve(),
+        )
+
+    async def cleanup(
+        self,
+        repo_path: Path,
+        worktree_path: Path,
+        *,
+        force: bool = False,
+    ) -> None:
+        repo = repo_path.resolve()
+        worktree = worktree_path.resolve()
+        if worktree == repo:
+            raise ValueError("refusing to remove the original repository")
+        common_raw = (await self._git(worktree, "rev-parse", "--git-common-dir")).strip()
+        common = Path(common_raw)
+        if not common.is_absolute():
+            common = worktree / common
+        registered_repo = common.resolve().parent
+        if registered_repo != repo:
+            raise ValueError(
+                f"worktree belongs to {registered_repo}, not requested repository {repo}"
+            )
+        changes = await self.changed_files(worktree)
+        if changes and not force:
+            raise RuntimeError("worktree has uncommitted changes; pass force=True to remove it")
+        args = ["worktree", "remove"]
+        if force:
+            args.append("--force")
+        args.append(str(worktree))
+        await self._git(repo, *args)
+        await self.prune(repo)
+
+    async def prune(self, repo_path: Path) -> None:
+        await self._git(repo_path.resolve(), "worktree", "prune")
 
     async def _git(self, cwd: Path, *args: str) -> str:
         process = await asyncio.create_subprocess_exec(

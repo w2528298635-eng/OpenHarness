@@ -59,6 +59,8 @@ class RepoPilotScheduler:
             original_repo=task.repo_path.resolve(),
             worktree_path=Path(info.path).resolve(),
             worktree_branch=info.branch,
+            worktree_slug=getattr(info, "slug", None),
+            worktree_root=getattr(info, "base_dir", None),
         )
         self.store.create(state)
         self.store.write_text(state.run_id, "diff.patch", "")

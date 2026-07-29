@@ -14,9 +14,7 @@ _ASSIGNMENT_SECRET = re.compile(
 )
 _BEARER_SECRET = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{8,}")
 _OPENAI_STYLE_SECRET = re.compile(r"\bsk-[A-Za-z0-9_-]{6,}")
-_SENSITIVE_KEYS = frozenset(
-    {"authorization", "api_key", "apikey", "password", "secret", "token"}
-)
+_SENSITIVE_KEYS = frozenset({"authorization", "api_key", "apikey", "password", "secret", "token"})
 
 
 class RunEventKind(str, Enum):

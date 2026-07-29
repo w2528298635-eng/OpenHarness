@@ -99,6 +99,33 @@ def report_command(
     typer.echo(report.read_text(encoding="utf-8"))
 
 
+@repopilot_app.command("cleanup")
+def cleanup_command(
+    run_id: str,
+    repo: Annotated[Path | None, typer.Option("--repo", help="Original repository path.")] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Remove a worktree even when it contains changes."),
+    ] = False,
+) -> None:
+    """Remove one registered repair worktree without deleting run artifacts."""
+    repo_path = (repo or Path.cwd()).resolve()
+    state = RunStore(repo_path).load_state(run_id)
+    if state.worktree_path is None:
+        raise typer.BadParameter("run has no worktree")
+    try:
+        asyncio.run(
+            WorkspaceManager().cleanup(
+                repo_path,
+                state.worktree_path,
+                force=force,
+            )
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise typer.BadParameter(str(exc), param_hint="run_id") from exc
+    typer.echo(f"removed worktree: {state.worktree_path}")
+
+
 @repopilot_app.command("benchmark")
 def benchmark_command(
     manifest: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],

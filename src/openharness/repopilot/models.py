@@ -178,6 +178,8 @@ class RepoRunState(BaseModel):
     original_repo: Path | None = None
     worktree_path: Path | None = None
     worktree_branch: str | None = None
+    worktree_slug: str | None = None
+    worktree_root: Path | None = None
     analysis: AnalysisResult | None = None
     plan: RepairPlan | None = None
     verification_history: list[VerificationResult] = Field(default_factory=list)

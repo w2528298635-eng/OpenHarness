@@ -67,9 +67,7 @@ def test_event_write_failure_is_non_fatal_and_recorded(
 
     monkeypatch.setattr(Path, "open", broken_events_open)
 
-    written = store.append_event(
-        RunEvent.create(run_id="run-1", kind=RunEventKind.RUN_STARTED)
-    )
+    written = store.append_event(RunEvent.create(run_id="run-1", kind=RunEventKind.RUN_STARTED))
 
     assert written is False
     assert store.event_warnings == ["event_write_failed: disk unavailable"]

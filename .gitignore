@@ -31,6 +31,7 @@ frontend/terminal/node_modules/
 
 # User data (never commit API keys or session data)
 .openharness/
+.openharness-repopilot-worktrees/
 react_tui_smoke.txt
 
 # OS

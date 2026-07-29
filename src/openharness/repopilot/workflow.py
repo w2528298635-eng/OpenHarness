@@ -143,8 +143,7 @@ class WorkflowRuntime:
             handler = self.definition.handlers.get(state.phase)
             if handler is None:
                 raise RuntimeError(
-                    f"workflow {self.definition.name!r} has no handler for "
-                    f"{state.phase.value}"
+                    f"workflow {self.definition.name!r} has no handler for {state.phase.value}"
                 )
             current_phase = state.phase
             await self._emit(
