@@ -10,6 +10,7 @@ import typer
 
 from .benchmark import load_benchmark
 from .evaluation import EvaluationRunner, EvaluationStrategy
+from .insight import InsightRequest
 from .phase_runner import OpenHarnessPhaseRunner
 from .scheduler import RepoPilotScheduler
 from .service import RepoPilotService
@@ -235,4 +236,21 @@ def serve_command(
         factory=True,
         host=host,
         port=port,
+    )
+
+
+@repopilot_app.command("insight")
+def insight_command(
+    repo: Annotated[Path, typer.Argument(exists=True, file_okay=False, readable=True)],
+    question: Annotated[str, typer.Option("--question", help="Repository question.")],
+) -> None:
+    """Generate a read-only, source-cited repository insight report."""
+    report = asyncio.run(
+        _service().insight(
+            InsightRequest(repo_path=repo, question=question),
+        )
+    )
+    typer.echo(report.model_dump_json(indent=2))
+    typer.echo(
+        f"report: {RunStore(repo).run_dir(report.run_id) / 'insight.md'}",
     )

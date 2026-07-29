@@ -10,6 +10,7 @@ from uuid import uuid4
 from pydantic import BaseModel
 
 from .events import RunEvent
+from .insight import InsightReport, InsightRequest, RepositoryInsightWorkflow
 from .models import RepoRunState, RepoTaskSpec
 from .store import RunStore
 
@@ -159,6 +160,11 @@ class RepoPilotService:
         self.get(run_id, repo)
         run_dir = self._store_for(run_id, repo).run_dir(run_id)
         return sorted(path.name for path in run_dir.iterdir() if path.is_file())
+
+    async def insight(self, request: InsightRequest) -> InsightReport:
+        return await RepositoryInsightWorkflow(store=self.store_factory(request.repo_path)).run(
+            request
+        )
 
     def _remember(self, state: RepoRunState, scheduler: Any) -> None:
         self._states[state.run_id] = state
