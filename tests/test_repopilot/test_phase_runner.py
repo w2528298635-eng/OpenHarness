@@ -65,6 +65,9 @@ async def test_runner_parses_structured_output_and_captures_trace(tmp_path: Path
 
     assert result.structured["root_cause"] == "off by one"
     assert result.tokens_used == 15
+    assert result.token_usage is not None
+    assert result.token_usage.input_tokens == 10
+    assert result.token_usage.output_tokens == 5
     assert result.actions[0].action_type == "read_file"
     assert result.observations[0].summary == "source"
 

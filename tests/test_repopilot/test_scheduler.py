@@ -128,6 +128,16 @@ async def test_successful_run_can_only_complete_after_verification(tmp_path: Pat
     assert len(state.verification_history) == 2
     assert (store.run_dir(state.run_id) / "report.md").exists()
     assert store.load_state(state.run_id).phase is Phase.COMPLETE
+    events = [
+        json.loads(line)
+        for line in (store.run_dir(state.run_id) / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert any(
+        event.get("schema_version") == 1 and event.get("kind") == "phase_started"
+        for event in events
+    )
 
 
 @pytest.mark.asyncio

@@ -25,6 +25,7 @@ from .models import (
     PhaseRunResult,
     RepairPlan,
     RepoRunState,
+    TokenUsage,
 )
 from .prompts import build_phase_prompt
 from .tools import ScopedToolRegistry
@@ -107,6 +108,7 @@ class OpenHarnessPhaseRunner:
         actions: list[ActionRecord] = []
         observations: list[ObservationRecord] = []
         total_tokens = 0
+        token_usage = TokenUsage()
         final_text = ""
         pending_action_ids: list[str] = []
         error_messages: list[str] = []
@@ -144,6 +146,10 @@ class OpenHarnessPhaseRunner:
                 elif isinstance(event, AssistantTurnComplete):
                     current_text = event.message.text
                     total_tokens += event.usage.total_tokens
+                    token_usage += TokenUsage(
+                        input_tokens=event.usage.input_tokens,
+                        output_tokens=event.usage.output_tokens,
+                    )
                     completed_turn = True
                 elif isinstance(event, ErrorEvent):
                     error_messages.append(event.message)
@@ -161,6 +167,7 @@ class OpenHarnessPhaseRunner:
                     phase=phase,
                     final_text=final_text,
                     tokens_used=total_tokens or None,
+                    token_usage=token_usage,
                     actions=actions,
                     observations=observations,
                 )
@@ -171,6 +178,7 @@ class OpenHarnessPhaseRunner:
                     structured=validated.model_dump(mode="json"),
                     final_text=final_text,
                     tokens_used=total_tokens or None,
+                    token_usage=token_usage,
                     actions=actions,
                     observations=observations,
                 )

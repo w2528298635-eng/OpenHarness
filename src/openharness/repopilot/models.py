@@ -5,7 +5,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 def utc_now() -> datetime:
@@ -43,6 +43,27 @@ class BudgetUsage(BaseModel):
     total_tokens: int | None = None
     repeated_actions: int = 0
     repeated_diffs: int = 0
+
+
+class TokenUsage(BaseModel):
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    cache_hit_tokens: int = Field(default=0, ge=0)
+    total_tokens: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def derive_total(self) -> TokenUsage:
+        if self.total_tokens is None:
+            self.total_tokens = self.input_tokens + self.output_tokens
+        return self
+
+    def __add__(self, other: TokenUsage) -> TokenUsage:
+        return TokenUsage(
+            input_tokens=self.input_tokens + other.input_tokens,
+            output_tokens=self.output_tokens + other.output_tokens,
+            cache_hit_tokens=self.cache_hit_tokens + other.cache_hit_tokens,
+            total_tokens=(self.total_tokens or 0) + (other.total_tokens or 0),
+        )
 
 
 class RepoTaskSpec(BaseModel):
@@ -145,6 +166,7 @@ class PhaseRunResult(BaseModel):
     structured: dict[str, Any] | None = None
     final_text: str = ""
     tokens_used: int | None = None
+    token_usage: TokenUsage | None = None
     actions: list[ActionRecord] = Field(default_factory=list)
     observations: list[ObservationRecord] = Field(default_factory=list)
 
