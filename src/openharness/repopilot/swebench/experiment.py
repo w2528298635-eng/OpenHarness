@@ -15,6 +15,9 @@ from .inference import InferenceArtifact, InferenceRequest, InferenceRunner
 from .models import PublicInstance, SampleManifest
 from .orchestration import (
     AgentRunError,
+    CheckpointStore,
+    ExperimentCheckpoint,
+    ExperimentOrchestrator,
     InfrastructureRunError,
     RunCompletion,
     RunKey,
@@ -142,3 +145,38 @@ class InferenceExperimentExecutor:
                     raise InfrastructureRunError(
                         f"Could not release repository for {key.value}: {exc}"
                     ) from exc
+
+
+async def run_inference_matrix(
+    *,
+    manifest: SampleManifest,
+    checkpoint_store: CheckpointStore,
+    adapters: Mapping[EvaluationArm, AgentAdapter],
+    repository_cache: RepositoryCache,
+    artifact_directory: Path,
+    budget: InferenceBudget,
+    max_infrastructure_retries: int,
+    inference_runner: InferenceRunner | None = None,
+) -> ExperimentCheckpoint:
+    checkpoint = checkpoint_store.load()
+    if checkpoint.manifest_sha256 != manifest.sha256:
+        raise InfrastructureRunError(
+            "Checkpoint manifest digest does not match the inference manifest."
+        )
+    if not checkpoint.records:
+        raise InfrastructureRunError(
+            "Checkpoint contains no run keys; recreate it with pilot or run."
+        )
+    executor = InferenceExperimentExecutor(
+        manifest=manifest,
+        adapters=adapters,
+        repository_cache=repository_cache,
+        inference_runner=inference_runner or InferenceRunner(),
+        artifact_directory=artifact_directory,
+        budget=budget,
+    )
+    keys = [record.key for record in checkpoint.records.values()]
+    return await ExperimentOrchestrator(
+        checkpoint_store,
+        max_infrastructure_retries=max_infrastructure_retries,
+    ).run(keys, executor.worker)

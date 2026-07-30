@@ -14,6 +14,7 @@ from openharness.repopilot.swebench.adapters import (
 from openharness.repopilot.swebench.experiment import (
     InferenceExperimentExecutor,
     build_experiment_adapters,
+    run_inference_matrix,
 )
 from openharness.repopilot.swebench.inference import InferenceRunner
 from openharness.repopilot.swebench.models import (
@@ -24,7 +25,10 @@ from openharness.repopilot.swebench.models import (
 )
 from openharness.repopilot.swebench.orchestration import (
     AgentRunError,
+    CheckpointStore,
     RunKey,
+    RunRecord,
+    RunStatus,
 )
 from openharness.repopilot.swebench.runners import (
     CurrentRepoPilotRunner,
@@ -170,3 +174,37 @@ def test_default_adapters_bind_each_arm_to_the_intended_runner(
     )
     assert adapters[EvaluationArm.UPGRADED_NO_RETRIEVAL].config.retrieval_enabled is False
     assert adapters[EvaluationArm.UPGRADED_WITH_RETRIEVAL].config.retrieval_enabled is True
+
+
+@pytest.mark.asyncio
+async def test_run_inference_matrix_advances_checkpoint_to_evaluation_pending(
+    tmp_path: Path,
+) -> None:
+    manifest = _manifest()
+    key = RunKey(
+        instance_id="django__django-1",
+        arm=EvaluationArm.NATIVE,
+        repetition=1,
+    )
+    store = CheckpointStore(tmp_path / "checkpoint.json")
+    checkpoint = store.create(manifest).with_record(RunRecord(key=key))
+    store.save(checkpoint)
+    config = build_arm_configs(model="deepseek-v4-flash")[key.arm]
+
+    result = await run_inference_matrix(
+        manifest=manifest,
+        checkpoint_store=store,
+        adapters={
+            key.arm: AgentAdapter(config=config, runner=StaticArmRunner())
+        },
+        repository_cache=DisposableCache(tmp_path),
+        artifact_directory=tmp_path / "artifacts",
+        budget=InferenceBudget(
+            max_model_calls=2,
+            max_total_tokens=1000,
+            max_wall_seconds=30,
+        ),
+        max_infrastructure_retries=1,
+    )
+
+    assert result.records[key.value].status is RunStatus.EVALUATION_PENDING

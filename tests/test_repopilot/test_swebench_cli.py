@@ -239,3 +239,128 @@ def test_pilot_plans_only_three_instances_and_four_arms(
         (output / "pilot-manifest.json").read_text(encoding="utf-8")
     )
     assert len(pilot_payload["instances"]) == 3
+    checkpoint_payload = json.loads(
+        (output / "pilot-checkpoint.json").read_text(encoding="utf-8")
+    )
+    assert len(checkpoint_payload["records"]) == 12
+
+
+def test_resume_execute_runs_sealed_inference_matrix(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from openharness.repopilot.swebench import cli as swebench_cli
+    from openharness.repopilot.swebench.adapters import (
+        AgentAdapter,
+        EvaluationArm,
+        RunnerOutcome,
+        build_arm_configs,
+    )
+    from openharness.repopilot.swebench.dataset import prepare_manifest
+    from openharness.repopilot.swebench.docker_runner import HarnessResult
+    from openharness.repopilot.swebench.models import SamplingConfig
+    from openharness.repopilot.swebench.orchestration import (
+        CheckpointStore,
+        RunKey,
+        RunRecord,
+    )
+
+    class StaticProvider:
+        dataset_name = "fixture/verified"
+        revision = "fixture-sha"
+
+        def rows(self):
+            return [_rows()[0]]
+
+    class StaticRunner:
+        async def run(self, **kwargs):
+            return RunnerOutcome(
+                status="completed",
+                run_id="cli-agent-run",
+                model_patch="diff --git a/a.py b/a.py\n",
+                duration_seconds=1,
+            )
+
+    class DisposableCache:
+        def __init__(self, root: Path):
+            self.root = root
+
+        def prepare(self, instance, *, workspace_id: str) -> Path:
+            path = self.root / workspace_id
+            path.mkdir(parents=True)
+            return path
+
+        def release(self, instance, *, workspace_id: str) -> None:
+            return None
+
+    class ResolvingHarness:
+        def __init__(self, **kwargs):
+            return None
+
+        def evaluate(self, **kwargs):
+            return HarnessResult(
+                status="completed",
+                total=1,
+                submitted=1,
+                completed=1,
+                resolved=1,
+                resolved_instance_ids=("alpha__repo-1",),
+            )
+
+    manifest_path = tmp_path / "manifest.json"
+    manifest = prepare_manifest(
+        StaticProvider(),
+        manifest_path,
+        SamplingConfig(easy=1, medium=0, hard=0),
+    )
+    key = RunKey(
+        instance_id=manifest.instances[0].instance_id,
+        arm=EvaluationArm.NATIVE,
+        repetition=1,
+    )
+    checkpoint_path = tmp_path / "checkpoint.json"
+    store = CheckpointStore(checkpoint_path)
+    store.save(store.create(manifest).with_record(RunRecord(key=key)))
+    config = build_arm_configs(model="deepseek-v4-flash")[key.arm]
+    monkeypatch.setattr(
+        swebench_cli,
+        "build_experiment_adapters",
+        lambda **kwargs: {
+            key.arm: AgentAdapter(config=config, runner=StaticRunner())
+        },
+    )
+    monkeypatch.setattr(swebench_cli, "SelectedRepositoryCache", DisposableCache)
+    monkeypatch.setattr(
+        swebench_cli,
+        "OfficialHarnessRunner",
+        ResolvingHarness,
+        raising=False,
+    )
+    monkeypatch.setenv("OPENHARNESS_OPENAI_API_KEY", "test-key")
+    legacy_source = tmp_path / "legacy"
+    legacy_source.mkdir()
+
+    result = runner.invoke(
+        app,
+        [
+            "repopilot",
+            "swebench",
+            "resume",
+            str(checkpoint_path),
+            "--execute",
+            "--evaluate",
+            "--manifest",
+            str(manifest_path),
+            "--output",
+            str(tmp_path / "output"),
+            "--repository-cache",
+            str(tmp_path / "cache"),
+            "--legacy-source",
+            str(legacy_source),
+            "--confirm-paid-matrix",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert '"completed": 1' in result.output
+    assert list((tmp_path / "output" / "inference").glob("*.json"))

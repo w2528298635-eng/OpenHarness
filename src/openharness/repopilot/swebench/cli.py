@@ -1,24 +1,33 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import os
+import sys
+import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
-from .adapters import EvaluationArm
+from .adapters import EvaluationArm, InferenceBudget
 from .dataset import (
     HuggingFaceDatasetProvider,
     JsonDatasetProvider,
     prepare_manifest,
     write_manifest,
 )
-from .docker_runner import run_doctor
+from .docker_runner import OfficialHarnessRunner, run_doctor
+from .execution import evaluate_pending_matrix
+from .experiment import build_experiment_adapters, run_inference_matrix
 from .models import SampleManifest, SamplingConfig
-from .orchestration import CheckpointStore, build_run_keys
+from .orchestration import CheckpointStore, RunRecord, build_run_keys
 from .reporting import ExperimentReport, render_report_markdown
+from .repositories import SelectedRepositoryCache
 from .sampler import derive_pilot_manifest
+
+_DEFAULT_REPOSITORY_CACHE = Path(tempfile.gettempdir()) / "repopilot-swebench-source"
 
 swebench_app = typer.Typer(
     name="swebench",
@@ -146,7 +155,17 @@ def _create_experiment(
                 "checkpoint manifest digest does not match requested manifest"
             )
     else:
-        store.create(manifest)
+        checkpoint = store.create(manifest)
+    desired_keys = {key.value for key in keys}
+    existing_keys = set(checkpoint.records)
+    if existing_keys and existing_keys != desired_keys:
+        raise typer.BadParameter(
+            "checkpoint run matrix does not match requested arms and repetitions"
+        )
+    if not existing_keys:
+        for key in keys:
+            checkpoint = checkpoint.with_record(RunRecord(key=key))
+        store.save(checkpoint)
     typer.echo(f"checkpoint: {checkpoint_path.resolve()}")
     typer.echo(f"planned_runs: {len(keys)}")
     typer.echo(
@@ -200,9 +219,128 @@ def resume_command(
         Path,
         typer.Argument(exists=True, dir_okay=False, readable=True),
     ],
+    execute: Annotated[
+        bool,
+        typer.Option("--execute", help="Run pending paid inference entries."),
+    ] = False,
+    evaluate: Annotated[
+        bool,
+        typer.Option("--evaluate", help="Run official SWE-bench Docker evaluation."),
+    ] = False,
+    manifest: Annotated[
+        Path | None,
+        typer.Option("--manifest", exists=True, dir_okay=False, readable=True),
+    ] = None,
+    output: Annotated[Path | None, typer.Option("--output")] = None,
+    repository_cache: Annotated[
+        Path,
+        typer.Option("--repository-cache"),
+    ] = _DEFAULT_REPOSITORY_CACHE,
+    legacy_source: Annotated[
+        Path | None,
+        typer.Option("--legacy-source", exists=True, file_okay=False),
+    ] = None,
+    model: Annotated[str, typer.Option("--model")] = "deepseek-v4-flash",
+    max_model_calls: Annotated[
+        int,
+        typer.Option("--max-model-calls", min=1),
+    ] = 8,
+    max_total_tokens: Annotated[
+        int,
+        typer.Option("--max-total-tokens", min=1),
+    ] = 50_000,
+    max_wall_seconds: Annotated[
+        float,
+        typer.Option("--max-wall-seconds", min=1),
+    ] = 900,
+    max_infrastructure_retries: Annotated[
+        int,
+        typer.Option("--max-infrastructure-retries", min=0),
+    ] = 1,
+    base_url: Annotated[
+        str,
+        typer.Option("--base-url"),
+    ] = "https://api.deepseek.com/v1",
+    harness_python: Annotated[
+        str,
+        typer.Option("--harness-python"),
+    ] = sys.executable,
+    harness_workers: Annotated[
+        int,
+        typer.Option("--harness-workers", min=1),
+    ] = 1,
+    confirm_paid_matrix: Annotated[
+        bool,
+        typer.Option("--confirm-paid-matrix"),
+    ] = False,
 ) -> None:
-    """Inspect resumable checkpoint status without rerunning completed entries."""
-    state = CheckpointStore(checkpoint).load()
+    """Inspect or execute a resumable, leakage-safe inference checkpoint."""
+    store = CheckpointStore(checkpoint)
+    state = store.load()
+    selected_manifest: SampleManifest | None = None
+    if execute or evaluate:
+        if manifest is None:
+            raise typer.BadParameter(
+                "--manifest is required with --execute or --evaluate",
+                param_hint="manifest",
+            )
+        selected_manifest = SampleManifest.model_validate_json(
+            manifest.read_text(encoding="utf-8")
+        )
+    if execute:
+        if not confirm_paid_matrix:
+            raise typer.BadParameter(
+                "paid model matrix requires --confirm-paid-matrix",
+                param_hint="confirm_paid_matrix",
+            )
+        if legacy_source is None:
+            raise typer.BadParameter(
+                "--legacy-source is required with --execute",
+                param_hint="legacy_source",
+            )
+        if not (
+            os.environ.get("OPENHARNESS_OPENAI_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+        ):
+            raise typer.BadParameter(
+                "DeepSeek API credential is not available in this process; "
+                "set OPENHARNESS_OPENAI_API_KEY securely before execution",
+                param_hint="credential",
+            )
+        artifact_root = (output or checkpoint.parent).resolve()
+        os.environ.setdefault("OPENHARNESS_BASE_URL", base_url)
+        os.environ.setdefault("OPENHARNESS_API_FORMAT", "openai")
+        state = asyncio.run(
+            run_inference_matrix(
+                manifest=selected_manifest,
+                checkpoint_store=store,
+                adapters=build_experiment_adapters(
+                    model=model,
+                    legacy_source=legacy_source.resolve(),
+                    artifact_root=artifact_root,
+                ),
+                repository_cache=SelectedRepositoryCache(repository_cache),
+                artifact_directory=artifact_root / "inference",
+                budget=InferenceBudget(
+                    max_model_calls=max_model_calls,
+                    max_total_tokens=max_total_tokens,
+                    max_wall_seconds=max_wall_seconds,
+                ),
+                max_infrastructure_retries=max_infrastructure_retries,
+            )
+        )
+    if evaluate:
+        assert selected_manifest is not None
+        artifact_root = (output or checkpoint.parent).resolve()
+        state = evaluate_pending_matrix(
+            checkpoint_store=store,
+            harness=OfficialHarnessRunner(
+                python_executable=harness_python,
+            ),
+            dataset_name=selected_manifest.dataset_name,
+            output_directory=artifact_root / "evaluation",
+            max_workers=harness_workers,
+        )
     counts = Counter(record.status.value for record in state.records.values())
     typer.echo(f"manifest_sha256: {state.manifest_sha256}")
     typer.echo(json.dumps(dict(sorted(counts.items())), indent=2))

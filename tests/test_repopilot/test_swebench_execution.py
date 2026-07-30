@@ -4,9 +4,14 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 from openharness.repopilot.swebench.adapters import EvaluationArm
 from openharness.repopilot.swebench.docker_runner import HarnessResult
-from openharness.repopilot.swebench.execution import BatchHarnessEvaluator
+from openharness.repopilot.swebench.execution import (
+    BatchHarnessEvaluator,
+    evaluate_pending_matrix,
+)
 from openharness.repopilot.swebench.inference import InferenceArtifact
 from openharness.repopilot.swebench.models import (
     DifficultyStratum,
@@ -16,8 +21,10 @@ from openharness.repopilot.swebench.models import (
 )
 from openharness.repopilot.swebench.orchestration import (
     CheckpointStore,
+    InfrastructureRunError,
     RunCompletion,
     RunKey,
+    RunRecord,
     RunStatus,
 )
 
@@ -127,3 +134,61 @@ def test_batch_evaluator_writes_unique_predictions_and_completes_checkpoint(
     record = store.load().records[key.value]
     assert record.status is RunStatus.COMPLETED
     assert record.resolved is True
+
+
+def test_evaluate_pending_matrix_groups_and_completes_pending_artifacts(
+    tmp_path: Path,
+) -> None:
+    manifest = _manifest()
+    key = RunKey(
+        instance_id="django__django-1",
+        arm=EvaluationArm.NATIVE,
+        repetition=1,
+    )
+    artifact_path = _sealed_artifact(tmp_path / "artifact.json")
+    store = CheckpointStore(tmp_path / "checkpoint.json")
+    checkpoint = store.create(manifest).with_completion(
+        key,
+        RunCompletion(
+            artifact_path=str(artifact_path),
+            artifact_sha256=artifact_path.with_suffix(
+                ".json.sha256"
+            ).read_text().strip(),
+        ),
+    )
+    store.save(checkpoint)
+    harness = RecordingHarness()
+
+    result = evaluate_pending_matrix(
+        checkpoint_store=store,
+        harness=harness,
+        dataset_name=manifest.dataset_name,
+        output_directory=tmp_path / "evaluation",
+    )
+
+    assert result.records[key.value].status is RunStatus.COMPLETED
+    assert len(harness.calls) == 1
+
+
+def test_batch_evaluator_reports_run_key_when_artifact_is_missing(
+    tmp_path: Path,
+) -> None:
+    manifest = _manifest()
+    key = RunKey(
+        instance_id="django__django-1",
+        arm=EvaluationArm.NATIVE,
+        repetition=1,
+    )
+    store = CheckpointStore(tmp_path / "checkpoint.json")
+    checkpoint = store.create(manifest).with_record(
+        RunRecord(key=key, status=RunStatus.EVALUATION_PENDING)
+    )
+    store.save(checkpoint)
+
+    with pytest.raises(InfrastructureRunError, match=key.value):
+        BatchHarnessEvaluator(
+            checkpoint_store=store,
+            harness=RecordingHarness(),
+            dataset_name=manifest.dataset_name,
+            output_directory=tmp_path / "evaluation",
+        ).evaluate([key])
