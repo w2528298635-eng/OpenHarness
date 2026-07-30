@@ -45,7 +45,7 @@ class RecordingGitRunner:
                 stdout="",
                 stderr="" if exists else "missing",
             )
-        if argv[:2] == ["git", "fetch"]:
+        if argv[:4] == ["git", "-c", "http.sslBackend=openssl", "fetch"]:
             commit = argv[-1]
             self.known_commits.add((cwd, commit))
         if argv[:3] == ["git", "worktree", "add"]:
@@ -66,8 +66,14 @@ def test_prepare_fetches_only_requested_commit_with_partial_shallow_clone(
     assert worktree == tmp_path / "worktrees" / "native-1"
     assert (
         repo_path,
+        ["git", "config", "http.sslBackend", "openssl"],
+    ) in runner.commands
+    assert (
+        repo_path,
         [
             "git",
+            "-c",
+            "http.sslBackend=openssl",
             "fetch",
             "--depth=1",
             "--filter=blob:none",
@@ -102,7 +108,13 @@ def test_prepare_reuses_repo_and_fetched_commit_for_repetitions(tmp_path: Path) 
 
     commands = [command for _, command in runner.commands]
     assert sum(command[:2] == ["git", "init"] for command in commands) == 1
-    assert sum(command[:2] == ["git", "fetch"] for command in commands) == 1
+    assert (
+        sum(
+            command[:4] == ["git", "-c", "http.sslBackend=openssl", "fetch"]
+            for command in commands
+        )
+        == 1
+    )
     assert sum(command[:3] == ["git", "worktree", "add"] for command in commands) == 2
 
 

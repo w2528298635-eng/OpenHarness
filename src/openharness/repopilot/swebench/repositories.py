@@ -113,6 +113,11 @@ class SelectedRepositoryCache:
                 cwd=repository_path,
             )
 
+        _checked(
+            self.command_runner,
+            ["git", "config", "http.sslBackend", "openssl"],
+            cwd=repository_path,
+        )
         commit_check = self.command_runner.run(
             ["git", "cat-file", "-e", f"{instance.base_commit}^{{commit}}"],
             cwd=repository_path,
@@ -122,6 +127,8 @@ class SelectedRepositoryCache:
                 self.command_runner,
                 [
                     "git",
+                    "-c",
+                    "http.sslBackend=openssl",
                     "fetch",
                     "--depth=1",
                     "--filter=blob:none",
