@@ -18,12 +18,18 @@ GIB = 1024**3
 
 
 def test_subprocess_runner_normalizes_empty_streams(monkeypatch) -> None:
+    received: dict[str, object] = {}
+
+    def fake_run(*args, **kwargs):
+        received.update(kwargs)
+        return subprocess.CompletedProcess(
+            args=args[0], returncode=0, stdout=None, stderr=None
+        )
+
     monkeypatch.setattr(
         subprocess,
         "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(
-            args=args[0], returncode=0, stdout=None, stderr=None
-        ),
+        fake_run,
     )
 
     result = SubprocessCommandRunner().run(["wsl", "--status"], timeout_seconds=1)
@@ -31,6 +37,8 @@ def test_subprocess_runner_normalizes_empty_streams(monkeypatch) -> None:
     assert result.exit_code == 0
     assert result.stdout == ""
     assert result.stderr == ""
+    assert received["encoding"] == "utf-8"
+    assert received["errors"] == "replace"
 
 
 class RecordingRunner:
