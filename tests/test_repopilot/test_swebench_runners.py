@@ -9,6 +9,7 @@ import pytest
 
 from openharness.api.usage import UsageSnapshot
 from openharness.engine.messages import ConversationMessage, TextBlock
+from openharness.engine.query import MaxTurnsExceeded
 from openharness.engine.stream_events import AssistantTurnComplete
 from openharness.repopilot.models import (
     BudgetUsage,
@@ -183,6 +184,41 @@ async def test_native_runner_uses_public_prompt_budget_and_returns_git_patch(
     assert outcome.model_patch.startswith("diff --git")
     assert outcome.input_tokens == 50
     assert outcome.output_tokens == 10
+
+
+@pytest.mark.asyncio
+async def test_native_runner_classifies_turn_limit_as_agent_failure(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+
+    class ExhaustedEngine:
+        async def submit_message(self, prompt):
+            if False:
+                yield None
+            raise MaxTurnsExceeded(8)
+
+    async def runtime_factory(**kwargs):
+        return SimpleNamespace(
+            engine=ExhaustedEngine(),
+            tool_registry=ToolRegistry(),
+        )
+
+    outcome = await NativeOpenHarnessRunner(
+        runtime_factory=runtime_factory
+    ).run(
+        instance=_instance(),
+        repository_path=repo,
+        config=build_arm_configs(model="deepseek-v4-flash")[EvaluationArm.NATIVE],
+        budget=InferenceBudget(
+            max_model_calls=8,
+            max_total_tokens=50_000,
+            max_wall_seconds=900,
+        ),
+    )
+
+    assert outcome.status == "failed"
+    assert "maximum turn limit" in (outcome.error or "")
 
 
 @pytest.mark.asyncio

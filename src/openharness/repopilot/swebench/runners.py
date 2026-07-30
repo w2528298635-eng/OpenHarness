@@ -15,6 +15,7 @@ from uuid import uuid4
 import yaml
 from pydantic import BaseModel, ConfigDict
 
+from openharness.engine.query import MaxTurnsExceeded
 from openharness.engine.stream_events import AssistantTurnComplete, ErrorEvent
 from openharness.repopilot.models import (
     BudgetConfig,
@@ -242,6 +243,9 @@ class NativeOpenHarnessRunner:
                 errors.append(
                     f"native OpenHarness exceeded {budget.max_wall_seconds}s"
                 )
+            except MaxTurnsExceeded as exc:
+                status = "failed"
+                errors.append(str(exc))
         finally:
             if hasattr(bundle, "mcp_manager"):
                 await close_runtime(bundle)
