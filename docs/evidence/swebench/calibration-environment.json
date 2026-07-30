@@ -23,6 +23,10 @@
   "downloads": {
     "huggingface_metadata_cache_mib": 1.99,
     "pilot_selected_commit_cache_and_worktrees_mib": 175.77,
+    "formal_selected_commit_cache_and_worktrees_gib": 1.476,
+    "formal_worktrees_verified": 45,
+    "formal_commit_mismatches": 0,
+    "formal_extra_worktrees": 0,
     "unselected_task_repositories_downloaded": 0,
     "unselected_task_docker_images_built": 0
   },

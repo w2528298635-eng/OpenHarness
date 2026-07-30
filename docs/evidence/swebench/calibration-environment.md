@@ -21,6 +21,10 @@ PASS_TO_PASS, or derived gold labels.
 
 - Hugging Face metadata cache: 1.99 MiB.
 - Three selected commit caches plus editable worktrees: 175.77 MiB.
+- All 45 formal task worktrees plus the shared 12-repository commit cache and
+  the earlier pilot worktrees: 1.476 GiB.
+- Verification: 45 expected worktrees, zero extra worktrees, and zero
+  base-commit mismatches.
 - Repositories for unselected tasks downloaded: zero.
 - Docker images for unselected tasks built: zero.
 
