@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any, Protocol
@@ -66,12 +67,18 @@ class HuggingFaceDatasetProvider:
         split: str = "test",
         api_factory: Callable[[], Any] | None = None,
         loader: Callable[..., Iterable[Mapping[str, Any]]] | None = None,
+        file_downloader: Callable[..., str] | None = None,
+        parquet_reader: Callable[[str], Any] | None = None,
+        cache_dir: Path | None = None,
     ):
         self.dataset_name = dataset_name
         self._revision = revision
         self.split = split
         self._api_factory = api_factory
         self._loader = loader
+        self._file_downloader = file_downloader
+        self._parquet_reader = parquet_reader
+        self._cache_dir = cache_dir or Path(tempfile.gettempdir()) / "repopilot-hf"
 
     @property
     def revision(self) -> str:
@@ -96,21 +103,40 @@ class HuggingFaceDatasetProvider:
 
     def rows(self) -> Iterable[Mapping[str, Any]]:
         loader = self._loader
-        if loader is None:
+        if loader is not None:
+            return loader(
+                self.dataset_name,
+                split=self.split,
+                revision=self.revision,
+                streaming=True,
+            )
+        downloader = self._file_downloader
+        if downloader is None:
             try:
-                from datasets import load_dataset
+                from huggingface_hub import hf_hub_download
             except ImportError as exc:
                 raise RuntimeError(
                     "Hugging Face dataset support is not installed; "
                     "install OpenHarness with the 'swebench' extra"
                 ) from exc
-            loader = load_dataset
-        return loader(
-            self.dataset_name,
-            split=self.split,
+            downloader = hf_hub_download
+        parquet_reader = self._parquet_reader
+        if parquet_reader is None:
+            try:
+                from pyarrow.parquet import read_table
+            except ImportError as exc:
+                raise RuntimeError(
+                    "PyArrow is required to read the public SWE-bench metadata"
+                ) from exc
+            parquet_reader = read_table
+        parquet_path = downloader(
+            repo_id=self.dataset_name,
+            repo_type="dataset",
+            filename=f"data/{self.split}-00000-of-00001.parquet",
             revision=self.revision,
-            streaming=True,
+            cache_dir=str(self._cache_dir),
         )
+        return parquet_reader(parquet_path).to_pylist()
 
 
 def _public_rows(rows: Iterable[Mapping[str, Any]]) -> Iterable[dict[str, Any]]:

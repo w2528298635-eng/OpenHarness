@@ -152,3 +152,44 @@ def test_huggingface_provider_resolves_revision_and_streams_rows(monkeypatch) ->
             "streaming": True,
         },
     )
+
+
+def test_huggingface_provider_downloads_only_verified_metadata_parquet() -> None:
+    calls: dict[str, Any] = {}
+
+    class DatasetInfo:
+        sha = "dataset-commit-sha"
+
+    class FakeApi:
+        def dataset_info(self, dataset_name: str):
+            return DatasetInfo()
+
+    class FakeTable:
+        def to_pylist(self):
+            return _rows()
+
+    def fake_download(**kwargs):
+        calls["download"] = kwargs
+        return "cached-test.parquet"
+
+    def fake_read_table(path: str):
+        calls["read_table"] = path
+        return FakeTable()
+
+    provider = HuggingFaceDatasetProvider(
+        dataset_name="SWE-bench/SWE-bench_Verified",
+        api_factory=FakeApi,
+        file_downloader=fake_download,
+        parquet_reader=fake_read_table,
+        cache_dir=Path("short-cache"),
+    )
+
+    assert list(provider.rows()) == _rows()
+    assert calls["download"] == {
+        "repo_id": "SWE-bench/SWE-bench_Verified",
+        "repo_type": "dataset",
+        "filename": "data/test-00000-of-00001.parquet",
+        "revision": "dataset-commit-sha",
+        "cache_dir": "short-cache",
+    }
+    assert calls["read_table"] == "cached-test.parquet"
