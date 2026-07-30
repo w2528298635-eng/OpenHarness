@@ -123,3 +123,12 @@ def test_pilot_manifest_contains_one_frozen_instance_per_stratum() -> None:
     assert {item.instance_id for item in pilot.instances}.issubset(
         {item.instance_id for item in formal.instances}
     )
+    expected = [
+        next(
+            item.instance_id
+            for item in formal.instances
+            if item.difficulty.value == difficulty
+        )
+        for difficulty in ("easy", "medium", "hard")
+    ]
+    assert [item.instance_id for item in pilot.instances] == expected

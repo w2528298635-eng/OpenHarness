@@ -131,14 +131,11 @@ def derive_pilot_manifest(manifest: SampleManifest) -> SampleManifest:
     """Select one immutable formal instance from each difficulty stratum."""
     selected: list[PublicInstance] = []
     for stratum in DifficultyStratum:
-        candidates = sorted(
-            (
-                instance
-                for instance in manifest.instances
-                if instance.difficulty is stratum
-            ),
-            key=lambda instance: instance.instance_id,
-        )
+        candidates = [
+            instance
+            for instance in manifest.instances
+            if instance.difficulty is stratum
+        ]
         if not candidates:
             raise InsufficientStratumError(
                 f"pilot requires one {stratum.value} instance but none are available"
