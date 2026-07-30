@@ -46,15 +46,9 @@ SchedulerFactory = Callable[
 
 
 def patch_presence_command() -> list[str]:
-    """Return success only after the agent has produced a Git working-tree change."""
-    script = (
-        "import subprocess,sys;"
-        "result=subprocess.run("
-        "['git','status','--porcelain=v1','--untracked-files=all'],"
-        "capture_output=True,text=True,check=False);"
-        "sys.exit(0 if result.returncode==0 and result.stdout.strip() else 1)"
-    )
-    return [sys.executable, "-c", script]
+    """Return a public pytest argv that passes only after a Git change exists."""
+    check_path = Path(__file__).with_name("patch_presence_check.py")
+    return [sys.executable, "-m", "pytest", "-q", str(check_path)]
 
 
 def _default_scheduler(

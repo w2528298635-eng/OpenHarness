@@ -29,6 +29,7 @@ from openharness.repopilot.swebench.runners import (
     ProcessResult,
     patch_presence_command,
 )
+from openharness.repopilot.task_loader import validate_verify_command
 from openharness.tools.base import ToolRegistry
 
 
@@ -71,6 +72,12 @@ def test_patch_presence_command_fails_before_a_diff_and_passes_after_one(
 
     assert before.returncode == 1
     assert after.returncode == 0
+
+
+def test_patch_presence_command_is_a_legacy_compatible_pytest_argv() -> None:
+    command = patch_presence_command()
+
+    assert validate_verify_command(command) == command
 
 
 @pytest.mark.asyncio
