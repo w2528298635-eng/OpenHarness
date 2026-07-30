@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from openharness.api.usage import UsageSnapshot
+from openharness.engine.messages import ConversationMessage, TextBlock
+from openharness.engine.stream_events import AssistantTurnComplete
 from openharness.repopilot.models import (
     BudgetUsage,
     Phase,
@@ -18,8 +22,10 @@ from openharness.repopilot.swebench.adapters import (
 from openharness.repopilot.swebench.models import DifficultyStratum, PublicInstance
 from openharness.repopilot.swebench.runners import (
     CurrentRepoPilotRunner,
+    NativeOpenHarnessRunner,
     patch_presence_command,
 )
+from openharness.tools.base import ToolRegistry
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -123,3 +129,54 @@ async def test_current_runner_maps_public_task_budget_retrieval_and_diff(
     assert outcome.input_tokens == 100
     assert outcome.output_tokens == 20
 
+
+@pytest.mark.asyncio
+async def test_native_runner_uses_public_prompt_budget_and_returns_git_patch(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    captured = {}
+
+    class EditingEngine:
+        async def submit_message(self, prompt):
+            captured["submitted_prompt"] = prompt
+            (repo / "app.py").write_text("VALUE = 3\n", encoding="utf-8")
+            yield AssistantTurnComplete(
+                ConversationMessage(
+                    role="assistant",
+                    content=[TextBlock(text="Implemented the public issue.")],
+                ),
+                UsageSnapshot(input_tokens=50, output_tokens=10),
+            )
+
+    async def runtime_factory(**kwargs):
+        captured["runtime"] = kwargs
+        return SimpleNamespace(
+            engine=EditingEngine(),
+            tool_registry=ToolRegistry(),
+        )
+
+    budget = InferenceBudget(
+        max_model_calls=7,
+        max_total_tokens=50_000,
+        max_wall_seconds=900,
+    )
+    config = build_arm_configs(model="deepseek-v4-flash")[EvaluationArm.NATIVE]
+
+    outcome = await NativeOpenHarnessRunner(
+        runtime_factory=runtime_factory
+    ).run(
+        instance=_instance(),
+        repository_path=repo,
+        config=config,
+        budget=budget,
+    )
+
+    assert captured["runtime"]["model"] == "deepseek-v4-flash"
+    assert captured["runtime"]["max_turns"] == 7
+    assert _instance().problem_statement in captured["submitted_prompt"]
+    assert "gold patch" not in captured["submitted_prompt"].casefold()
+    assert outcome.status == "completed"
+    assert outcome.model_patch.startswith("diff --git")
+    assert outcome.input_tokens == 50
+    assert outcome.output_tokens == 10
