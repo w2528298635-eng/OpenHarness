@@ -186,7 +186,7 @@ def test_formal_run_refuses_to_start_when_doctor_is_not_ready(
     assert "10 GiB free" in result.output
 
 
-def test_pilot_plans_only_three_instances_and_four_arms(
+def test_pilot_plans_inference_without_a_docker_ready_environment(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -213,9 +213,9 @@ def test_pilot_plans_only_three_instances_and_four_arms(
             machine="AMD64",
             logical_cpus=16,
             memory_bytes=16 * 1024**3,
-            free_disk_bytes=82 * 1024**3,
+            free_disk_bytes=10 * 1024**3,
         ),
-        checks=(DoctorCheck(name="docker", status="pass", summary="ready"),),
+        checks=(DoctorCheck(name="docker", status="fail", summary="not ready"),),
     )
     monkeypatch.setattr(swebench_cli, "run_doctor", lambda path: ready)
     output = tmp_path / "pilot"

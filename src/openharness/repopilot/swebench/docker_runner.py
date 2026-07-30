@@ -50,8 +50,8 @@ class SubprocessCommandRunner:
             return CommandResult(exit_code=None, stdout="", stderr=str(exc))
         return CommandResult(
             exit_code=completed.returncode,
-            stdout=completed.stdout,
-            stderr=completed.stderr,
+            stdout=completed.stdout or "",
+            stderr=completed.stderr or "",
         )
 
 

@@ -136,7 +136,7 @@ def _create_experiment(
         )
     report = run_doctor(output / "cache")
     report_json = report.model_dump_json()
-    if not report.formal_ready:
+    if not pilot and not report.formal_ready:
         raise _doctor_failure(report_json)
     manifest = SampleManifest.model_validate_json(
         manifest_path.read_text(encoding="utf-8")

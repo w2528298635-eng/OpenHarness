@@ -1,18 +1,36 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 from openharness.repopilot.swebench.docker_runner import (
     CommandResult,
     HarnessPrediction,
     OfficialHarnessRunner,
+    SubprocessCommandRunner,
     SystemFacts,
     run_doctor,
     write_predictions_jsonl,
 )
 
 GIB = 1024**3
+
+
+def test_subprocess_runner_normalizes_empty_streams(monkeypatch) -> None:
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=args[0], returncode=0, stdout=None, stderr=None
+        ),
+    )
+
+    result = SubprocessCommandRunner().run(["wsl", "--status"], timeout_seconds=1)
+
+    assert result.exit_code == 0
+    assert result.stdout == ""
+    assert result.stderr == ""
 
 
 class RecordingRunner:
