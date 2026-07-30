@@ -1,0 +1,90 @@
+from pathlib import Path
+
+
+def test_evaluator_records_one_completed_instance_and_can_resume(tmp_path: Path) -> None:
+    from openharness.repopilot.swebench.localization_execution import (
+        LocalizationCheckpointStore,
+        evaluate_localization_instance,
+    )
+    from openharness.repopilot.swebench.models import DifficultyStratum, PublicInstance
+
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "pricing.py").write_text(
+        "def final_price(total, discount):\n    return total - discount\n",
+        encoding="utf-8",
+    )
+    instance = PublicInstance(
+        instance_id="owner__repo-1",
+        repo="owner/repo",
+        base_commit="abc",
+        problem_statement="final_price discounts incorrectly",
+        source_difficulty="<15 min fix",
+        difficulty=DifficultyStratum.EASY,
+    )
+    patch = (
+        "diff --git a/pricing.py b/pricing.py\n"
+        "--- a/pricing.py\n"
+        "+++ b/pricing.py\n"
+        "@@ -1 +1 @@\n"
+        "-def final_price(total, discount):\n"
+        "+def final_price(total, discount, tax=0):\n"
+    )
+    store = LocalizationCheckpointStore(tmp_path / "localization.json")
+
+    result = evaluate_localization_instance(
+        instance=instance,
+        repository=repository,
+        gold_patch=patch,
+        store=store,
+    )
+
+    assert result.instance_id == instance.instance_id
+    assert result.status == "completed"
+    assert result.metrics.recall_at[1] == 1.0
+    assert store.load().records[instance.instance_id].status == "completed"
+    assert evaluate_localization_instance(
+        instance=instance,
+        repository=repository,
+        gold_patch=patch,
+        store=store,
+    ).model_dump() == result.model_dump()
+
+
+def test_manifest_evaluator_uses_gold_only_after_public_instance_is_loaded(
+    tmp_path: Path,
+) -> None:
+    from openharness.repopilot.swebench.localization_execution import (
+        LocalizationCheckpointStore,
+        evaluate_localization_manifest,
+    )
+    from openharness.repopilot.swebench.models import DifficultyStratum, PublicInstance
+
+    instance = PublicInstance(
+        instance_id="owner__repo-1",
+        repo="owner/repo",
+        base_commit="abc",
+        problem_statement="discount calculation",
+        source_difficulty="<15 min fix",
+        difficulty=DifficultyStratum.EASY,
+    )
+    repository = tmp_path / "sources" / "formal-owner__repo-1"
+    repository.mkdir(parents=True)
+    (repository / "pricing.py").write_text("DISCOUNT = 1\n", encoding="utf-8")
+    checkpoint = evaluate_localization_manifest(
+        instances=(instance,),
+        public_rows_with_gold=[
+            {
+                "instance_id": instance.instance_id,
+                "patch": (
+                    "diff --git a/pricing.py b/pricing.py\n"
+                    "--- a/pricing.py\n+++ b/pricing.py\n@@ -1 +1 @@\n"
+                    "-DISCOUNT = 1\n+DISCOUNT = 2\n"
+                ),
+            }
+        ],
+        repository_root=tmp_path / "sources",
+        store=LocalizationCheckpointStore(tmp_path / "checkpoint.json"),
+    )
+
+    assert checkpoint.records[instance.instance_id].metrics.recall_at[1] == 1.0
