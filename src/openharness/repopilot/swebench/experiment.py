@@ -107,17 +107,24 @@ class InferenceExperimentExecutor:
                     f"Could not prepare repository for {key.value}: {exc}"
                 ) from exc
 
-            artifact_path = await self._inference_runner.run(
-                request=InferenceRequest(
-                    instance=instance,
-                    arm=key.arm,
-                    repetition=key.repetition,
-                    budget=self._budget,
-                ),
-                adapter=adapter,
-                repository_path=repository_path,
-                output_directory=self._artifact_directory,
-            )
+            try:
+                artifact_path = await self._inference_runner.run(
+                    request=InferenceRequest(
+                        instance=instance,
+                        arm=key.arm,
+                        repetition=key.repetition,
+                        budget=self._budget,
+                    ),
+                    adapter=adapter,
+                    repository_path=repository_path,
+                    output_directory=self._artifact_directory,
+                )
+            except (AgentRunError, InfrastructureRunError):
+                raise
+            except Exception as exc:
+                raise InfrastructureRunError(
+                    f"Inference runner crashed for {key.value}: {exc}"
+                ) from exc
             artifact = InferenceArtifact.model_validate_json(
                 artifact_path.read_text(encoding="utf-8")
             )

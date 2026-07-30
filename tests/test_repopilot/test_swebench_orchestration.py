@@ -19,6 +19,7 @@ from openharness.repopilot.swebench.orchestration import (
     InfrastructureRunError,
     RunCompletion,
     RunKey,
+    RunRecord,
     RunStatus,
     build_run_keys,
 )
@@ -249,3 +250,34 @@ async def test_orchestrator_retries_infrastructure_failure_but_not_agent_failure
     assert result.records[infra_key.value].status is RunStatus.COMPLETED
     assert result.records[infra_key.value].infrastructure_retries == 1
     assert result.records[agent_key.value].status is RunStatus.AGENT_FAILED
+
+
+@pytest.mark.asyncio
+async def test_resume_does_not_repeat_terminal_agent_failure(tmp_path: Path) -> None:
+    store = CheckpointStore(tmp_path / "checkpoint.json")
+    key = RunKey(
+        instance_id="django__django-1",
+        arm=EvaluationArm.NATIVE,
+        repetition=1,
+    )
+    checkpoint = store.create(_manifest()).with_record(
+        RunRecord(
+            key=key,
+            status=RunStatus.AGENT_FAILED,
+            attempts=1,
+            error="turn budget exhausted",
+            transitions=(RunStatus.PENDING, RunStatus.RUNNING, RunStatus.AGENT_FAILED),
+        )
+    )
+    store.save(checkpoint)
+
+    async def worker(run_key: RunKey) -> RunCompletion:
+        raise AssertionError("terminal agent failures must not spend another call")
+
+    result = await ExperimentOrchestrator(
+        store,
+        max_infrastructure_retries=1,
+    ).run([key], worker)
+
+    assert result.records[key.value].status is RunStatus.AGENT_FAILED
+    assert result.records[key.value].attempts == 1

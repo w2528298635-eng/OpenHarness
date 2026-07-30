@@ -26,6 +26,7 @@ from openharness.repopilot.swebench.models import (
 from openharness.repopilot.swebench.orchestration import (
     AgentRunError,
     CheckpointStore,
+    InfrastructureRunError,
     RunKey,
     RunRecord,
     RunStatus,
@@ -148,6 +149,28 @@ async def test_executor_records_agent_failure_but_still_releases_worktree(
     )
 
     with pytest.raises(AgentRunError, match="agent stopped"):
+        await executor.worker(key)
+
+    assert cache.prepared == cache.released
+
+
+@pytest.mark.asyncio
+async def test_executor_classifies_unexpected_runner_error_as_infrastructure_failure(
+    tmp_path: Path,
+) -> None:
+    executor, cache = _executor(tmp_path)
+    executor._inference_runner = type(
+        "BrokenInferenceRunner",
+        (),
+        {"run": staticmethod(lambda **kwargs: (_ for _ in ()).throw(RuntimeError("broken")))},
+    )()
+    key = RunKey(
+        instance_id="django__django-1",
+        arm=EvaluationArm.NATIVE,
+        repetition=1,
+    )
+
+    with pytest.raises(InfrastructureRunError, match="broken"):
         await executor.worker(key)
 
     assert cache.prepared == cache.released

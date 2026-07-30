@@ -211,7 +211,7 @@ class ExperimentOrchestrator:
         checkpoint = self.store.load()
         for key in keys:
             current = checkpoint.record_for(key)
-            if _valid_inference(current):
+            if current.status is RunStatus.AGENT_FAILED or _valid_inference(current):
                 continue
             retries = current.infrastructure_retries
             while True:
