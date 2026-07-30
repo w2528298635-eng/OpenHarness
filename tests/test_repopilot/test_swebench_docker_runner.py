@@ -63,7 +63,7 @@ def test_doctor_reports_docker_daemon_unavailable() -> None:
     assert "daemon unavailable" in daemon.summary
 
 
-def test_doctor_requires_wsl_and_disk_but_only_warns_for_recommended_cpu_ram() -> None:
+def test_doctor_requires_wsl_but_treats_120_gib_as_recommendation_for_subset() -> None:
     runner = RecordingRunner(
         [
             CommandResult(exit_code=0, stdout="Docker version 29", stderr=""),
@@ -81,9 +81,29 @@ def test_doctor_requires_wsl_and_disk_but_only_warns_for_recommended_cpu_ram() -
     statuses = {check.name: check.status for check in report.checks}
     assert statuses["cpu"] == "warn"
     assert statuses["memory"] == "warn"
-    assert statuses["disk"] == "fail"
+    assert statuses["disk"] == "warn"
     assert statuses["wsl2"] == "fail"
     assert report.formal_ready is False
+
+
+def test_doctor_fails_when_subset_has_less_than_minimum_safe_disk() -> None:
+    runner = RecordingRunner(
+        [
+            CommandResult(exit_code=0, stdout="Docker version 29", stderr=""),
+            CommandResult(exit_code=0, stdout='{"ServerVersion":"29"}', stderr=""),
+            CommandResult(exit_code=0, stdout="WSL 2", stderr=""),
+        ]
+    )
+
+    report = run_doctor(
+        Path("C:/cache"),
+        command_runner=runner,
+        system_facts=_facts(free_gib=10),
+    )
+
+    disk = next(check for check in report.checks if check.name == "disk")
+    assert disk.status == "fail"
+    assert "20 GiB minimum" in disk.summary
 
 
 def test_doctor_is_ready_on_supported_linux_without_wsl_check() -> None:
@@ -154,11 +174,18 @@ def test_official_harness_uses_argv_and_parses_report(tmp_path: Path) -> None:
         result_path=report_path,
         max_workers=2,
         cache_level="env",
+        clean=True,
+        instance_ids=("django__django-1", "sympy__sympy-2"),
     )
 
     command = command_runner.commands[0]
     assert command[0:3] == ["python", "-m", "swebench.harness.run_evaluation"]
     assert str(predictions) in command
+    assert command[command.index("--instance_ids") + 1 :] == [
+        "django__django-1",
+        "sympy__sympy-2",
+    ]
+    assert command[command.index("--clean") + 1] == "true"
     assert result.status == "completed"
     assert result.resolved == 1
     assert result.resolution_rate == 0.5
@@ -194,4 +221,3 @@ def test_official_harness_classifies_timeout_without_parsing_results(
 
     assert result.status == "timeout"
     assert result.resolved == 0
-

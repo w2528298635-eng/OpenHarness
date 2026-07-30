@@ -8,7 +8,11 @@ from typing import Annotated
 import typer
 
 from .adapters import EvaluationArm
-from .dataset import JsonDatasetProvider, prepare_manifest
+from .dataset import (
+    HuggingFaceDatasetProvider,
+    JsonDatasetProvider,
+    prepare_manifest,
+)
 from .docker_runner import run_doctor
 from .models import SampleManifest, SamplingConfig
 from .orchestration import CheckpointStore, build_run_keys
@@ -57,12 +61,12 @@ def doctor_command(
 
 @swebench_app.command("prepare")
 def prepare_command(
-    source: Annotated[
-        Path,
-        typer.Argument(exists=True, dir_okay=False, readable=True),
-    ],
-    revision: Annotated[str, typer.Option("--revision")],
     output: Annotated[Path, typer.Option("--output")],
+    source: Annotated[
+        Path | None,
+        typer.Argument(exists=True, dir_okay=False, readable=True),
+    ] = None,
+    revision: Annotated[str | None, typer.Option("--revision")] = None,
     dataset_name: Annotated[str, typer.Option("--dataset-name")] = (
         "SWE-bench/SWE-bench_Verified"
     ),
@@ -72,12 +76,23 @@ def prepare_command(
     seed: Annotated[int, typer.Option("--seed")] = 20260730,
     force: Annotated[bool, typer.Option("--force")] = False,
 ) -> None:
-    """Create a frozen manifest from an offline public JSON/JSONL snapshot."""
-    provider = JsonDatasetProvider(
-        source,
-        dataset_name=dataset_name,
-        revision=revision,
-    )
+    """Stream public metadata or use an offline snapshot to freeze a manifest."""
+    if source is None:
+        provider = HuggingFaceDatasetProvider(
+            dataset_name=dataset_name,
+            revision=revision,
+        )
+    else:
+        if revision is None:
+            raise typer.BadParameter(
+                "--revision is required for an offline source",
+                param_hint="revision",
+            )
+        provider = JsonDatasetProvider(
+            source,
+            dataset_name=dataset_name,
+            revision=revision,
+        )
     manifest = prepare_manifest(
         provider,
         output,
@@ -207,4 +222,3 @@ def report_command(
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(markdown, encoding="utf-8")
     typer.echo(f"report: {output.resolve()}")
-

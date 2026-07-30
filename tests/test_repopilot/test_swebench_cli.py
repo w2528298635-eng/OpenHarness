@@ -81,6 +81,49 @@ def test_prepare_builds_offline_frozen_manifest(tmp_path: Path) -> None:
     assert payload["dataset_revision"] == "fixture-revision"
 
 
+def test_prepare_can_stream_public_dataset_without_source(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from openharness.repopilot.swebench import cli as swebench_cli
+
+    class OnlineProvider:
+        dataset_name = "SWE-bench/SWE-bench_Verified"
+        revision = "resolved-dataset-sha"
+
+        def rows(self):
+            return _rows()
+
+    monkeypatch.setattr(
+        swebench_cli,
+        "HuggingFaceDatasetProvider",
+        lambda **kwargs: OnlineProvider(),
+    )
+    output = tmp_path / "manifest.json"
+
+    result = runner.invoke(
+        app,
+        [
+            "repopilot",
+            "swebench",
+            "prepare",
+            "--output",
+            str(output),
+            "--easy",
+            "1",
+            "--medium",
+            "1",
+            "--hard",
+            "1",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["dataset_revision"] == "resolved-dataset-sha"
+    assert len(payload["instances"]) == 3
+
+
 def test_doctor_can_emit_machine_readable_json(monkeypatch) -> None:
     from openharness.repopilot.swebench import cli as swebench_cli
 
@@ -141,4 +184,3 @@ def test_formal_run_refuses_to_start_when_doctor_is_not_ready(
     assert result.exit_code != 0
     assert "Docker environment is not ready" in result.output
     assert "10 GiB free" in result.output
-

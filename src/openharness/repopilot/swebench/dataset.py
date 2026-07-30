@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -62,27 +62,55 @@ class HuggingFaceDatasetProvider:
         self,
         *,
         dataset_name: str = "SWE-bench/SWE-bench_Verified",
-        revision: str,
+        revision: str | None = None,
         split: str = "test",
+        api_factory: Callable[[], Any] | None = None,
+        loader: Callable[..., Iterable[Mapping[str, Any]]] | None = None,
     ):
         self.dataset_name = dataset_name
-        self.revision = revision
+        self._revision = revision
         self.split = split
+        self._api_factory = api_factory
+        self._loader = loader
+
+    @property
+    def revision(self) -> str:
+        if self._revision is None:
+            if self._api_factory is None:
+                try:
+                    from huggingface_hub import HfApi
+                except ImportError as exc:
+                    raise RuntimeError(
+                        "Hugging Face support is not installed; install "
+                        "OpenHarness with the 'swebench' extra"
+                    ) from exc
+                self._api_factory = HfApi
+            info = self._api_factory().dataset_info(self.dataset_name)
+            revision = getattr(info, "sha", None)
+            if not isinstance(revision, str) or not revision:
+                raise RuntimeError(
+                    f"Hugging Face returned no immutable revision for {self.dataset_name}"
+                )
+            self._revision = revision
+        return self._revision
 
     def rows(self) -> Iterable[Mapping[str, Any]]:
-        try:
-            from datasets import load_dataset
-        except ImportError as exc:
-            raise RuntimeError(
-                "Hugging Face dataset support is not installed; "
-                "install OpenHarness with the 'swebench' extra"
-            ) from exc
-        dataset = load_dataset(
+        loader = self._loader
+        if loader is None:
+            try:
+                from datasets import load_dataset
+            except ImportError as exc:
+                raise RuntimeError(
+                    "Hugging Face dataset support is not installed; "
+                    "install OpenHarness with the 'swebench' extra"
+                ) from exc
+            loader = load_dataset
+        return loader(
             self.dataset_name,
             split=self.split,
             revision=self.revision,
+            streaming=True,
         )
-        return dataset
 
 
 def _public_rows(rows: Iterable[Mapping[str, Any]]) -> Iterable[dict[str, Any]]:

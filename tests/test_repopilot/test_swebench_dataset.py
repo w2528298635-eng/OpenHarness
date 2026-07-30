@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from openharness.repopilot.swebench.dataset import (
+    HuggingFaceDatasetProvider,
     JsonDatasetProvider,
     ManifestConflictError,
     prepare_manifest,
@@ -118,3 +119,36 @@ def test_json_dataset_provider_reads_jsonl_and_records_explicit_revision(
     assert provider.revision == "sha256:fixture"
     assert list(provider.rows()) == _rows()
 
+
+def test_huggingface_provider_resolves_revision_and_streams_rows(monkeypatch) -> None:
+    calls: dict[str, Any] = {}
+
+    class DatasetInfo:
+        sha = "dataset-commit-sha"
+
+    class FakeApi:
+        def dataset_info(self, dataset_name: str):
+            calls["dataset_info"] = dataset_name
+            return DatasetInfo()
+
+    def fake_load_dataset(dataset_name: str, **kwargs):
+        calls["load_dataset"] = (dataset_name, kwargs)
+        return iter(_rows())
+
+    provider = HuggingFaceDatasetProvider(
+        dataset_name="SWE-bench/SWE-bench_Verified",
+        api_factory=FakeApi,
+        loader=fake_load_dataset,
+    )
+
+    assert provider.revision == "dataset-commit-sha"
+    assert list(provider.rows()) == _rows()
+    assert calls["dataset_info"] == "SWE-bench/SWE-bench_Verified"
+    assert calls["load_dataset"] == (
+        "SWE-bench/SWE-bench_Verified",
+        {
+            "split": "test",
+            "revision": "dataset-commit-sha",
+            "streaming": True,
+        },
+    )

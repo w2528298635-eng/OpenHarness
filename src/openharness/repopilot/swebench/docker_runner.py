@@ -202,15 +202,27 @@ def run_doctor(
             summary=f"{facts.memory_bytes / GIB:.1f} GiB RAM; 16 GiB or more recommended",
         )
     )
-    checks.append(
-        DoctorCheck(
-            name="disk",
-            status="pass" if facts.free_disk_bytes >= 120 * GIB else "fail",
-            summary=(
-                f"{facts.free_disk_bytes / GIB:.1f} GiB free near cache; "
-                "120 GiB is required for formal local runs"
-            ),
+    free_gib = facts.free_disk_bytes / GIB
+    if facts.free_disk_bytes < 20 * GIB:
+        disk_status: Literal["pass", "warn", "fail"] = "fail"
+        disk_summary = (
+            f"{free_gib:.1f} GiB free near cache; 20 GiB minimum is required "
+            "before a three-instance subset calibration"
         )
+    elif facts.free_disk_bytes < 120 * GIB:
+        disk_status = "warn"
+        disk_summary = (
+            f"{free_gib:.1f} GiB free near cache; below the 120 GiB full-suite "
+            "recommendation, so run the three-instance disk projection first"
+        )
+    else:
+        disk_status = "pass"
+        disk_summary = (
+            f"{free_gib:.1f} GiB free near cache; meets the 120 GiB "
+            "full-suite recommendation"
+        )
+    checks.append(
+        DoctorCheck(name="disk", status=disk_status, summary=disk_summary)
     )
     return DoctorReport(facts=facts, checks=tuple(checks))
 
@@ -280,6 +292,7 @@ class OfficialHarnessRunner:
         cache_level: Literal["none", "base", "env", "instance"],
         timeout_seconds: float = 7200,
         instance_ids: Sequence[str] = (),
+        clean: bool = True,
     ) -> HarnessResult:
         argv = [
             self.python_executable,
@@ -295,6 +308,8 @@ class OfficialHarnessRunner:
             run_id,
             "--cache_level",
             cache_level,
+            "--clean",
+            str(clean).lower(),
         ]
         if instance_ids:
             argv.extend(["--instance_ids", *instance_ids])
@@ -334,4 +349,3 @@ class OfficialHarnessRunner:
             report_path=str(result_path),
             **common,
         )
-
