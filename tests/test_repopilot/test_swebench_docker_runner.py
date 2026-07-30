@@ -221,3 +221,36 @@ def test_official_harness_classifies_timeout_without_parsing_results(
 
     assert result.status == "timeout"
     assert result.resolved == 0
+
+
+def test_official_harness_preserves_resolved_instance_ids(tmp_path: Path) -> None:
+    report_path = tmp_path / "results.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "total_instances": 2,
+                "submitted_instances": 2,
+                "completed_instances": 2,
+                "resolved_ids": ["django__django-1"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    command_runner = RecordingRunner(
+        [CommandResult(exit_code=0, stdout="complete", stderr="")]
+    )
+
+    result = OfficialHarnessRunner(
+        python_executable="python",
+        command_runner=command_runner,
+    ).evaluate(
+        dataset_name="SWE-bench/SWE-bench_Verified",
+        predictions_path=tmp_path / "predictions.jsonl",
+        run_id="ids",
+        result_path=report_path,
+        max_workers=1,
+        cache_level="env",
+    )
+
+    assert result.resolved == 1
+    assert result.resolved_instance_ids == ("django__django-1",)

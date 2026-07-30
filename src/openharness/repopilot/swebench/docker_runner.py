@@ -264,6 +264,7 @@ class HarnessResult(BaseModel):
     submitted: int = 0
     completed: int = 0
     resolved: int = 0
+    resolved_instance_ids: tuple[str, ...] = ()
     resolution_rate: float = 0.0
     exit_code: int | None = None
     stdout: str = ""
@@ -333,9 +334,17 @@ class OfficialHarnessRunner:
         completed = int(
             payload.get("completed_instances", payload.get("completed", submitted))
         )
-        resolved_value = payload.get("resolved_instances", payload.get("resolved", 0))
+        resolved_value = payload.get(
+            "resolved_ids",
+            payload.get("resolved_instances", payload.get("resolved", 0)),
+        )
+        resolved_instance_ids = (
+            tuple(str(value) for value in resolved_value)
+            if isinstance(resolved_value, list)
+            else ()
+        )
         resolved = (
-            len(resolved_value)
+            len(resolved_instance_ids)
             if isinstance(resolved_value, list)
             else int(resolved_value)
         )
@@ -345,6 +354,7 @@ class OfficialHarnessRunner:
             submitted=submitted,
             completed=completed,
             resolved=resolved,
+            resolved_instance_ids=resolved_instance_ids,
             resolution_rate=resolved / submitted if submitted else 0.0,
             report_path=str(result_path),
             **common,

@@ -96,6 +96,78 @@ def test_checkpoint_store_writes_atomically(tmp_path: Path) -> None:
     assert not list(tmp_path.glob("*.tmp"))
 
 
+def test_inference_completion_remains_pending_until_official_evaluation(
+    tmp_path: Path,
+) -> None:
+    store = CheckpointStore(tmp_path / "checkpoint.json")
+    checkpoint = store.create(_manifest())
+    key = RunKey(
+        instance_id="django__django-1",
+        arm=EvaluationArm.NATIVE,
+        repetition=1,
+    )
+    artifact_path = _write_sealed_artifact(tmp_path)
+
+    checkpoint = checkpoint.with_completion(
+        key,
+        RunCompletion(
+            artifact_path=str(artifact_path),
+            artifact_sha256=artifact_path.with_suffix(
+                ".json.sha256"
+            ).read_text().strip(),
+            resolved=None,
+        ),
+    )
+
+    record = checkpoint.records[key.value]
+    assert record.status is RunStatus.EVALUATION_PENDING
+    assert record.resolved is None
+
+    evaluated = checkpoint.with_evaluation(key, resolved=True)
+
+    assert evaluated.records[key.value].status is RunStatus.COMPLETED
+    assert evaluated.records[key.value].resolved is True
+
+
+@pytest.mark.asyncio
+async def test_resume_does_not_repeat_sealed_inference_awaiting_evaluation(
+    tmp_path: Path,
+) -> None:
+    store = CheckpointStore(tmp_path / "checkpoint.json")
+    checkpoint = store.create(_manifest())
+    key = RunKey(
+        instance_id="django__django-1",
+        arm=EvaluationArm.NATIVE,
+        repetition=1,
+    )
+    artifact_path = _write_sealed_artifact(tmp_path)
+    checkpoint = checkpoint.with_completion(
+        key,
+        RunCompletion(
+            artifact_path=str(artifact_path),
+            artifact_sha256=artifact_path.with_suffix(
+                ".json.sha256"
+            ).read_text().strip(),
+            resolved=None,
+        ),
+    )
+    store.save(checkpoint)
+    calls = 0
+
+    async def worker(run_key: RunKey) -> RunCompletion:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("sealed inference must not be repeated")
+
+    result = await ExperimentOrchestrator(
+        store,
+        max_infrastructure_retries=1,
+    ).run([key], worker)
+
+    assert calls == 0
+    assert result.records[key.value].status is RunStatus.EVALUATION_PENDING
+
+
 @pytest.mark.asyncio
 async def test_orchestrator_skips_only_completed_runs_with_valid_seals(
     tmp_path: Path,

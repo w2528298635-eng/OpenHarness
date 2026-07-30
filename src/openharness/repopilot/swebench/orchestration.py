@@ -15,6 +15,7 @@ from .models import SampleManifest
 class RunStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
+    EVALUATION_PENDING = "evaluation_pending"
     COMPLETED = "completed"
     AGENT_FAILED = "agent_failed"
     INFRASTRUCTURE_FAILED = "infrastructure_failed"
@@ -37,7 +38,7 @@ class RunCompletion(BaseModel):
 
     artifact_path: str
     artifact_sha256: str
-    resolved: bool
+    resolved: bool | None = None
 
 
 class RunRecord(BaseModel):
@@ -75,12 +76,42 @@ class ExperimentCheckpoint(BaseModel):
         completion: RunCompletion,
     ) -> ExperimentCheckpoint:
         previous = self.record_for(key)
+        status = (
+            RunStatus.COMPLETED
+            if completion.resolved is not None
+            else RunStatus.EVALUATION_PENDING
+        )
         record = previous.model_copy(
             update={
-                "status": RunStatus.COMPLETED,
+                "status": status,
                 "artifact_path": completion.artifact_path,
                 "artifact_sha256": completion.artifact_sha256,
                 "resolved": completion.resolved,
+                "error": None,
+                "transitions": (*previous.transitions, status),
+            }
+        )
+        return self.with_record(record)
+
+    def with_evaluation(
+        self,
+        key: RunKey,
+        *,
+        resolved: bool,
+    ) -> ExperimentCheckpoint:
+        previous = self.record_for(key)
+        if previous.status not in {
+            RunStatus.EVALUATION_PENDING,
+            RunStatus.COMPLETED,
+        }:
+            raise ValueError(
+                f"cannot attach evaluation to {key.value} in "
+                f"{previous.status.value} state"
+            )
+        record = previous.model_copy(
+            update={
+                "status": RunStatus.COMPLETED,
+                "resolved": resolved,
                 "error": None,
                 "transitions": (*previous.transitions, RunStatus.COMPLETED),
             }
@@ -144,8 +175,12 @@ def build_run_keys(
     ]
 
 
-def _valid_completion(record: RunRecord) -> bool:
-    if record.status is not RunStatus.COMPLETED or record.artifact_path is None:
+def _valid_inference(record: RunRecord) -> bool:
+    if (
+        record.status
+        not in {RunStatus.EVALUATION_PENDING, RunStatus.COMPLETED}
+        or record.artifact_path is None
+    ):
         return False
     path = Path(record.artifact_path)
     if not verify_artifact_seal(path):
@@ -176,7 +211,7 @@ class ExperimentOrchestrator:
         checkpoint = self.store.load()
         for key in keys:
             current = checkpoint.record_for(key)
-            if _valid_completion(current):
+            if _valid_inference(current):
                 continue
             retries = current.infrastructure_retries
             while True:
@@ -237,4 +272,3 @@ class ExperimentOrchestrator:
                 self.store.save(checkpoint)
                 break
         return checkpoint
-
