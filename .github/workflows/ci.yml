@@ -31,7 +31,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --extra dev --extra api
 
       - name: Run test suite
         run: uv run pytest -q
@@ -54,7 +54,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --extra dev --extra api
 
       - name: Ruff
         run: uv run ruff check src tests scripts

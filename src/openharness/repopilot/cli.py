@@ -15,6 +15,7 @@ from .phase_runner import OpenHarnessPhaseRunner
 from .scheduler import RepoPilotScheduler
 from .service import RepoPilotService
 from .store import RunStore
+from .swebench.cli import swebench_app
 from .task_loader import load_task
 from .verifier import PythonPytestVerifier
 from .workspace import WorkspaceManager
@@ -24,6 +25,7 @@ repopilot_app = typer.Typer(
     help="Run deterministic local Python bug-repair workflows.",
     no_args_is_help=True,
 )
+repopilot_app.add_typer(swebench_app)
 
 
 def _scheduler(repo: Path, verify_timeout: float = 300) -> RepoPilotScheduler:

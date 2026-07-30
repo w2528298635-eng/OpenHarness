@@ -3,9 +3,9 @@ from __future__ import annotations
 import ast
 import re
 import shlex
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
-from typing import Mapping
 
 from pydantic import BaseModel, ConfigDict, computed_field
 
@@ -139,13 +139,13 @@ class _SymbolCollector(ast.NodeVisitor):
         self.generic_visit(node)
         self.stack.pop()
 
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._visit_symbol(node)
 
-    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:  # noqa: N802
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         self._visit_symbol(node)
 
-    def visit_ClassDef(self, node: ast.ClassDef) -> None:  # noqa: N802
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
         self._visit_symbol(node)
 
 
@@ -208,4 +208,3 @@ def extract_gold_labels(
         if names:
             symbols[path] = tuple(names)
     return GoldLabels(files=tuple(files), symbols=symbols)
-

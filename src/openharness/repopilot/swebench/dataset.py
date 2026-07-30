@@ -51,7 +51,7 @@ class JsonDatasetProvider:
             ]
         payload = json.loads(text)
         if not isinstance(payload, list):
-            raise ValueError("offline SWE-bench JSON must contain a list of rows")
+            raise TypeError("offline SWE-bench JSON must contain a list of rows")
         return payload
 
 
@@ -130,4 +130,3 @@ def prepare_manifest(
             )
     _atomic_write_manifest(output_path, manifest)
     return manifest
-
