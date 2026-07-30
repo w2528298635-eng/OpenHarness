@@ -48,6 +48,13 @@ was performed automatically.
 
 ## Current status
 
-The official harness calibration and all paid model calls remain unrun.
-Consequently, this document makes no repair-rate, RAG-uplift, cost, or
-statistical-significance claim.
+The paid three-task inference calibration completed on 2026-07-30. Its sealed
+artifacts and an explicit failure taxonomy are recorded in
+[pilot-v2-inference.md](pilot-v2-inference.md). Two candidate patches are
+awaiting official evaluation; neither may be reported as resolved.
+
+The host's Docker daemon and WSL2 checks now pass, but the installed Windows
+Python cannot run the official SWE-bench harness because it depends on the
+Unix-only `resource` module. A normal Linux WSL distribution has not yet been
+installed. Consequently, this document still makes no repair-rate, RAG-uplift,
+cost, or statistical-significance claim.
