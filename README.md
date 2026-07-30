@@ -27,8 +27,10 @@ For reproducible agent-evaluation work, RepoPilot also ships a frozen,
 leakage-safe 45-task SWE-bench Verified subset (10 easy / 15 medium / 20 hard),
 sealed inference artifacts, and a separate official-evaluator stage. The
 [pilot-v2 inference record](docs/evidence/swebench/pilot-v2-inference.md)
-documents the currently observed candidate patches and failures. It deliberately
-does **not** present un-evaluated patches as benchmark resolutions.
+documents the observed failures plus two separately evaluated scikit-learn
+calibration patches. The record deliberately limits the official result to its
+actual denominator (one task per upgraded arm) and does **not** claim broad
+benchmark resolution or RAG uplift.
 
 **ohmo** is a personal AI agent built on OpenHarness — not another chatbot, but an assistant that actually works for you over long sessions. Chat with ohmo in Feishu / Slack / Telegram / Discord, and it forks branches, writes code, runs tests, and opens PRs on its own. ohmo runs on your existing Claude Code or Codex subscription — no extra API key needed.
 

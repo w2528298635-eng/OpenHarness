@@ -49,12 +49,13 @@ was performed automatically.
 ## Current status
 
 The paid three-task inference calibration completed on 2026-07-30. Its sealed
-artifacts and an explicit failure taxonomy are recorded in
-[pilot-v2-inference.md](pilot-v2-inference.md). Two candidate patches are
-awaiting official evaluation; neither may be reported as resolved.
+artifacts, official JSON reports, and an explicit failure taxonomy are recorded
+in [pilot-v2-inference.md](pilot-v2-inference.md). The two scikit-learn
+candidate patches were evaluated by the official harness and both resolved the
+single submitted instance.
 
-The host's Docker daemon and WSL2 checks now pass, but the installed Windows
-Python cannot run the official SWE-bench harness because it depends on the
-Unix-only `resource` module. A normal Linux WSL distribution has not yet been
-installed. Consequently, this document still makes no repair-rate, RAG-uplift,
-cost, or statistical-significance claim.
+The official evaluator now runs in an Ubuntu 22.04 WSL2 distribution stored on
+E:, with Docker Desktop WSL integration and `swebench==4.1.0`. The normal
+Windows Python remains unsuitable for the official harness because it lacks the
+Unix-only `resource` module. This is a 1-task-per-arm calibration only, so no
+RAG-uplift, cost, or statistical-significance claim is made.

@@ -212,6 +212,7 @@ def test_official_harness_uses_argv_and_parses_report(tmp_path: Path) -> None:
         "sympy__sympy-2",
     ]
     assert command[command.index("--clean") + 1] == "true"
+    assert command[command.index("--report_dir") + 1] == str(report_path.parent)
     assert result.status == "completed"
     assert result.resolved == 1
     assert result.resolution_rate == 0.5
@@ -247,6 +248,48 @@ def test_official_harness_classifies_timeout_without_parsing_results(
 
     assert result.status == "timeout"
     assert result.resolved == 0
+
+
+def test_official_harness_finds_the_report_named_by_swebench(
+    tmp_path: Path,
+) -> None:
+    generated_report = tmp_path / "RepoPilot__arm.run-1.json"
+    generated_report.write_text(
+        json.dumps(
+            {
+                "total_instances": 1,
+                "submitted_instances": 1,
+                "completed_instances": 1,
+                "resolved_ids": ["django__django-1"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    runner = OfficialHarnessRunner(
+        python_executable="python",
+        command_runner=RecordingRunner(
+            [
+                CommandResult(
+                    exit_code=0,
+                    stdout=f"Report written to {generated_report}",
+                    stderr="",
+                )
+            ]
+        ),
+    )
+
+    result = runner.evaluate(
+        dataset_name="SWE-bench/SWE-bench_Verified",
+        predictions_path=tmp_path / "predictions.jsonl",
+        run_id="run-1",
+        result_path=tmp_path / "expected.json",
+        max_workers=1,
+        cache_level="env",
+    )
+
+    assert result.status == "completed"
+    assert result.report_path == str(generated_report)
+    assert result.resolved_instance_ids == ("django__django-1",)
 
 
 def test_official_harness_preserves_resolved_instance_ids(tmp_path: Path) -> None:

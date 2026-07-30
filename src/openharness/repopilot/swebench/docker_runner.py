@@ -4,6 +4,7 @@ import ctypes
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -313,6 +314,8 @@ class OfficialHarnessRunner:
             cache_level,
             "--clean",
             str(clean).lower(),
+            "--report_dir",
+            str(result_path.parent),
         ]
         if instance_ids:
             argv.extend(["--instance_ids", *instance_ids])
@@ -326,9 +329,21 @@ class OfficialHarnessRunner:
             return HarnessResult(status="timeout", **common)
         if execution.exit_code != 0:
             return HarnessResult(status="failed", **common)
-        if not result_path.exists():
+        actual_result_path = result_path
+        if not actual_result_path.exists():
+            matches = re.findall(
+                r"^Report written to (?P<path>.+)$",
+                execution.stdout,
+                flags=re.MULTILINE,
+            )
+            if matches:
+                candidate = Path(matches[-1].strip())
+                actual_result_path = (
+                    candidate if candidate.is_absolute() else Path.cwd() / candidate
+                )
+        if not actual_result_path.exists():
             return HarnessResult(status="missing_report", **common)
-        payload = json.loads(result_path.read_text(encoding="utf-8"))
+        payload = json.loads(actual_result_path.read_text(encoding="utf-8"))
         total = int(payload.get("total_instances", payload.get("total", 0)))
         submitted = int(
             payload.get("submitted_instances", payload.get("submitted", total))
@@ -358,6 +373,6 @@ class OfficialHarnessRunner:
             resolved=resolved,
             resolved_instance_ids=resolved_instance_ids,
             resolution_rate=resolved / submitted if submitted else 0.0,
-            report_path=str(result_path),
+            report_path=str(actual_result_path),
             **common,
         )

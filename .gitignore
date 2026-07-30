@@ -34,6 +34,8 @@ frontend/terminal/node_modules/
 .openharness-repopilot-worktrees/
 .openharness-swebench/
 .cache/swebench/
+logs/
+RepoPilot__*.json
 react_tui_smoke.txt
 
 # OS
