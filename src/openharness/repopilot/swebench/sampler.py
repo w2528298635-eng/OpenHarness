@@ -126,3 +126,34 @@ def sample_manifest(
         }
     )
 
+
+def derive_pilot_manifest(manifest: SampleManifest) -> SampleManifest:
+    """Select one immutable formal instance from each difficulty stratum."""
+    selected: list[PublicInstance] = []
+    for stratum in DifficultyStratum:
+        candidates = sorted(
+            (
+                instance
+                for instance in manifest.instances
+                if instance.difficulty is stratum
+            ),
+            key=lambda instance: instance.instance_id,
+        )
+        if not candidates:
+            raise InsufficientStratumError(
+                f"pilot requires one {stratum.value} instance but none are available"
+            )
+        selected.append(candidates[0])
+    config = manifest.sampling.model_copy(
+        update={"easy": 1, "medium": 1, "hard": 1}
+    )
+    provisional = manifest.model_copy(
+        update={
+            "sampling": config,
+            "instances": tuple(selected),
+            "sha256": "0" * 64,
+        }
+    )
+    return provisional.model_copy(
+        update={"sha256": manifest_sha256(provisional)}
+    )

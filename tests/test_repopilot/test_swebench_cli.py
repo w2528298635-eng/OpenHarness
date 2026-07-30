@@ -184,3 +184,58 @@ def test_formal_run_refuses_to_start_when_doctor_is_not_ready(
     assert result.exit_code != 0
     assert "Docker environment is not ready" in result.output
     assert "10 GiB free" in result.output
+
+
+def test_pilot_plans_only_three_instances_and_four_arms(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from openharness.repopilot.swebench import cli as swebench_cli
+    from openharness.repopilot.swebench.dataset import prepare_manifest
+    from openharness.repopilot.swebench.models import SamplingConfig
+
+    class StaticProvider:
+        dataset_name = "fixture/verified"
+        revision = "fixture-sha"
+
+        def rows(self):
+            return _rows()
+
+    manifest_path = tmp_path / "formal.json"
+    prepare_manifest(
+        StaticProvider(),
+        manifest_path,
+        SamplingConfig(easy=1, medium=1, hard=1),
+    )
+    ready = DoctorReport(
+        facts=SystemFacts(
+            system="Windows",
+            machine="AMD64",
+            logical_cpus=16,
+            memory_bytes=16 * 1024**3,
+            free_disk_bytes=82 * 1024**3,
+        ),
+        checks=(DoctorCheck(name="docker", status="pass", summary="ready"),),
+    )
+    monkeypatch.setattr(swebench_cli, "run_doctor", lambda path: ready)
+    output = tmp_path / "pilot"
+
+    result = runner.invoke(
+        app,
+        [
+            "repopilot",
+            "swebench",
+            "pilot",
+            str(manifest_path),
+            "--output",
+            str(output),
+            "--confirm-paid-matrix",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "planned_runs: 12" in result.output
+    pilot_payload = json.loads(
+        (output / "pilot-manifest.json").read_text(encoding="utf-8")
+    )
+    assert len(pilot_payload["instances"]) == 3

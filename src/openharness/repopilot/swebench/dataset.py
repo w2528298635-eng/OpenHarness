@@ -144,7 +144,7 @@ def _public_rows(rows: Iterable[Mapping[str, Any]]) -> Iterable[dict[str, Any]]:
         yield {field: row[field] for field in _PUBLIC_FIELDS}
 
 
-def _atomic_write_manifest(target: Path, manifest: SampleManifest) -> None:
+def write_manifest(target: Path, manifest: SampleManifest) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_suffix(target.suffix + ".tmp")
     payload = manifest.model_dump_json(indent=2)
@@ -182,5 +182,5 @@ def prepare_manifest(
                 f"{output_path} contains a different frozen manifest; "
                 "use force=True to replace it explicitly"
             )
-    _atomic_write_manifest(output_path, manifest)
+    write_manifest(output_path, manifest)
     return manifest

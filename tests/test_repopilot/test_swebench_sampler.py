@@ -5,6 +5,7 @@ import pytest
 from openharness.repopilot.swebench.models import SamplingConfig
 from openharness.repopilot.swebench.sampler import (
     InsufficientStratumError,
+    derive_pilot_manifest,
     manifest_sha256,
     sample_manifest,
 )
@@ -99,3 +100,26 @@ def test_sample_manifest_never_persists_gold_fields() -> None:
     with pytest.raises(ValueError, match="gold-only"):
         sample_manifest(rows, config, dataset_revision="revision-abc")
 
+
+def test_pilot_manifest_contains_one_frozen_instance_per_stratum() -> None:
+    formal = sample_manifest(
+        _rows(),
+        SamplingConfig(easy=2, medium=2, hard=2, seed=20260730),
+        dataset_revision="revision-abc",
+    )
+
+    pilot = derive_pilot_manifest(formal)
+
+    assert len(pilot.instances) == 3
+    assert {instance.difficulty.value for instance in pilot.instances} == {
+        "easy",
+        "medium",
+        "hard",
+    }
+    assert pilot.sampling.easy == 1
+    assert pilot.sampling.medium == 1
+    assert pilot.sampling.hard == 1
+    assert pilot.sha256 == manifest_sha256(pilot)
+    assert {item.instance_id for item in pilot.instances}.issubset(
+        {item.instance_id for item in formal.instances}
+    )

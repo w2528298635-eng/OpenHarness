@@ -12,11 +12,13 @@ from .dataset import (
     HuggingFaceDatasetProvider,
     JsonDatasetProvider,
     prepare_manifest,
+    write_manifest,
 )
 from .docker_runner import run_doctor
 from .models import SampleManifest, SamplingConfig
 from .orchestration import CheckpointStore, build_run_keys
 from .reporting import ExperimentReport, render_report_markdown
+from .sampler import derive_pilot_manifest
 
 swebench_app = typer.Typer(
     name="swebench",
@@ -130,6 +132,9 @@ def _create_experiment(
     manifest = SampleManifest.model_validate_json(
         manifest_path.read_text(encoding="utf-8")
     )
+    if pilot:
+        manifest = derive_pilot_manifest(manifest)
+        write_manifest(output / "pilot-manifest.json", manifest)
     arms = tuple(EvaluationArm)
     keys = build_run_keys(manifest, arms, repetitions=repetitions)
     checkpoint_path = output / ("pilot-checkpoint.json" if pilot else "checkpoint.json")
