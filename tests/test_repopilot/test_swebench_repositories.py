@@ -50,6 +50,8 @@ class RecordingGitRunner:
             self.known_commits.add((cwd, commit))
         if argv[:3] == ["git", "worktree", "add"]:
             Path(argv[-2]).mkdir(parents=True)
+        if argv[:3] == ["git", "worktree", "remove"]:
+            Path(argv[-1]).rmdir()
         return GitCommandResult(exit_code=0, stdout="", stderr="")
 
 
@@ -129,3 +131,21 @@ def test_prepare_does_not_touch_unselected_repository(tmp_path: Path) -> None:
     )
     assert "sympy" not in command_text
     assert "pytest-dev" not in command_text
+
+
+def test_release_removes_only_requested_temporary_worktree(tmp_path: Path) -> None:
+    runner = RecordingGitRunner()
+    cache = SelectedRepositoryCache(tmp_path, command_runner=runner)
+    instance = _instance()
+    selected = cache.prepare(instance, workspace_id="native-1")
+    other = cache.prepare(instance, workspace_id="native-2")
+
+    cache.release(instance, workspace_id="native-1")
+
+    repo_path = tmp_path / "repositories" / "django__django"
+    assert not selected.exists()
+    assert other.exists()
+    assert (
+        repo_path,
+        ["git", "worktree", "remove", "--force", str(selected)],
+    ) in runner.commands

@@ -152,3 +152,23 @@ class SelectedRepositoryCache:
             cwd=repository_path,
         )
         return worktree_path
+
+    def release(self, instance: PublicInstance, *, workspace_id: str) -> None:
+        """Remove one disposable task worktree while retaining shared Git objects."""
+        if not _WORKSPACE_ID.fullmatch(workspace_id):
+            raise ValueError(f"invalid workspace id: {workspace_id!r}")
+        repository_path = self.root / "repositories" / _repository_key(instance.repo)
+        worktree_path = self.root / "worktrees" / workspace_id
+        if not worktree_path.exists():
+            return
+        _checked(
+            self.command_runner,
+            [
+                "git",
+                "worktree",
+                "remove",
+                "--force",
+                str(worktree_path),
+            ],
+            cwd=repository_path,
+        )
