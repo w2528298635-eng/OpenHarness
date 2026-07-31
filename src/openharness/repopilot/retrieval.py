@@ -156,7 +156,7 @@ class RepositoryIndex(BaseModel):
 
     def hybrid_search(self, query: RetrievalQuery, *, encoder) -> RetrievalResult:
         """Fuse lexical relevance with locally computed cosine similarity."""
-        lexical = self.search(RetrievalQuery(text=query.text, top_k=len(self.chunks)))
+        lexical = self.search(RetrievalQuery(text=query.text, top_k=100))
         query_vector, *chunk_vectors = encoder(
             [query.text, *(f"{chunk.path} {chunk.symbol} {chunk.text}" for chunk in self.chunks)]
         )
