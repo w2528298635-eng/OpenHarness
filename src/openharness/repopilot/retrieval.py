@@ -162,6 +162,7 @@ class RepositoryIndex(BaseModel):
             [query.text, *(f"{item.chunk.path} {item.chunk.symbol} {item.chunk.text}" for item in candidates)]
         )
         lexical_scores = {item.chunk.chunk_id: item.score for item in candidates}
+        maximum_lexical = max(lexical_scores.values(), default=1.0)
         scored: list[ScoredChunk] = []
         for lexical_match, vector in zip(candidates, chunk_vectors, strict=True):
             chunk = lexical_match.chunk
@@ -170,7 +171,8 @@ class RepositoryIndex(BaseModel):
             vector_norm = math.sqrt(sum(value * value for value in vector))
             semantic = numerator / (query_norm * vector_norm) if query_norm and vector_norm else 0.0
             lexical_score = lexical_scores.get(chunk.chunk_id, 0.0)
-            score = lexical_score + semantic * 10
+            normalized_lexical = lexical_score / maximum_lexical
+            score = normalized_lexical * 0.45 + semantic * 0.55
             if score > 0:
                 reasons = ["semantic"] if semantic > 0 else []
                 if lexical_score:
