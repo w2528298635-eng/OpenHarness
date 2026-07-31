@@ -171,6 +171,11 @@ openh repopilot swebench localize docs\evidence\swebench\pilot-manifest.json `
   --checkpoint .openharness-swebench\dual-planned-structural-pilot3.json `
   --repository-root C:\path\to\prepared\worktrees `
   --strategy hybrid --query-planning --structural-expansion
+
+openh repopilot swebench localization-report `
+  .openharness-swebench\dual-planned-structural-pilot3.json `
+  docs\evidence\swebench\pilot-manifest.json `
+  --output .openharness-swebench\dual-planned-structural-pilot3-summary.json
 ```
 
 Embedding 缓存按实际编码文本的 SHA-256 寻址，而不是按会随行号变化的 chunk ID

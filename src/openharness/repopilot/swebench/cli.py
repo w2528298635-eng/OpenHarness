@@ -25,6 +25,7 @@ from .localization_execution import (
     LocalizationCheckpointStore,
     evaluate_localization_manifest,
 )
+from .localization_reporting import build_localization_report
 from .models import SampleManifest, SamplingConfig
 from .orchestration import CheckpointStore, RunRecord, build_run_keys
 from .reporting import ExperimentReport, render_report_markdown
@@ -411,3 +412,30 @@ def localize_command(
     )
     typer.echo(f"checkpoint: {checkpoint.resolve()}")
     typer.echo(f"completed: {len(state.records)}")
+
+
+@swebench_app.command("localization-report")
+def localization_report_command(
+    checkpoint: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True),
+    ],
+    manifest: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True),
+    ],
+    output: Annotated[Path | None, typer.Option("--output")] = None,
+) -> None:
+    """Aggregate a localization checkpoint overall and by difficulty."""
+    selected = SampleManifest.model_validate_json(manifest.read_text(encoding="utf-8"))
+    report = build_localization_report(
+        LocalizationCheckpointStore(checkpoint).load(),
+        selected,
+    )
+    payload = report.model_dump_json(indent=2)
+    if output is None:
+        typer.echo(payload)
+        return
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(payload + "\n", encoding="utf-8")
+    typer.echo(f"report: {output.resolve()}")

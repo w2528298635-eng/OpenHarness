@@ -45,7 +45,16 @@ def test_swebench_help_lists_workflow_commands() -> None:
     result = runner.invoke(app, ["repopilot", "swebench", "--help"])
 
     assert result.exit_code == 0
-    for command in ["doctor", "prepare", "pilot", "run", "resume", "report", "localize"]:
+    for command in [
+        "doctor",
+        "prepare",
+        "pilot",
+        "run",
+        "resume",
+        "report",
+        "localize",
+        "localization-report",
+    ]:
         assert command in result.stdout
 
 
