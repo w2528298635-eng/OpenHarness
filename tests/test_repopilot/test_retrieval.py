@@ -204,7 +204,7 @@ def test_structure_expansion_reserves_space_for_cross_file_callers(tmp_path: Pat
         f"def helper_{index}():\n return {index}" for index in range(12)
     )
     (tmp_path / "service.py").write_text(
-        f"{helpers}\n\ndef target(value):\n return value\n",
+        f"{helpers}\n\ndef target(value):\n return value + helper_11()\n",
         encoding="utf-8",
     )
     (tmp_path / "api.py").write_text(
@@ -218,3 +218,20 @@ def test_structure_expansion_reserves_space_for_cross_file_callers(tmp_path: Pat
 
     assert any(chunk.path == "service.py" and chunk.chunk_id != seed.chunk_id for chunk in expanded)
     assert any(chunk.path == "api.py" and chunk.symbol == "call_target" for chunk in expanded)
+
+
+def test_structure_expansion_excludes_unrelated_nearby_definition(tmp_path: Path) -> None:
+    (tmp_path / "service.py").write_text(
+        "def helper(value):\n return value\n\n"
+        "def unrelated(value):\n return value * 100\n\n"
+        "def target(value):\n return helper(value)\n",
+        encoding="utf-8",
+    )
+    index = RepositoryIndex.build(tmp_path)
+    seed = next(chunk for chunk in index.chunks if chunk.symbol == "target")
+
+    expanded = index.expand_structure([seed], limit=5)
+    symbols = {chunk.symbol for chunk in expanded}
+
+    assert "helper" in symbols
+    assert "unrelated" not in symbols

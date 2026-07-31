@@ -272,7 +272,17 @@ class RepositoryIndex(BaseModel):
         same_file: list[tuple[int, CodeChunk]] = []
         for seed in seeds:
             for chunk in self.chunks:
-                if chunk.path == seed.path and chunk.chunk_id != seed.chunk_id:
+                if chunk.path != seed.path or chunk.chunk_id == seed.chunk_id:
+                    continue
+                seed_calls_chunk = bool(
+                    chunk.symbol
+                    and re.search(rf"\b{re.escape(chunk.symbol)}\b", seed.text)
+                )
+                chunk_calls_seed = bool(
+                    seed.symbol
+                    and re.search(rf"\b{re.escape(seed.symbol)}\b", chunk.text)
+                )
+                if seed_calls_chunk or chunk_calls_seed:
                     same_file.append((abs(chunk.start_line - seed.start_line), chunk))
         for _, chunk in sorted(
             same_file,

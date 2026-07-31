@@ -107,7 +107,7 @@ def test_context_builder_reserves_tight_budget_for_structural_neighbor(
 ) -> None:
     (tmp_path / "service.py").write_text(
         "def helper(value):\n return value\n\n"
-        "def target(value):\n return value + 1\n",
+        "def target(value):\n return helper(value) + 1\n",
         encoding="utf-8",
     )
     (tmp_path / "distractor.py").write_text(
