@@ -154,6 +154,29 @@ class RepositoryIndex(BaseModel):
             indexed_chunks=len(self.chunks),
         )
 
+    def hybrid_search(self, query: RetrievalQuery, *, encoder) -> RetrievalResult:
+        """Fuse lexical relevance with locally computed cosine similarity."""
+        lexical = self.search(RetrievalQuery(text=query.text, top_k=len(self.chunks)))
+        query_vector, *chunk_vectors = encoder(
+            [query.text, *(f"{chunk.path} {chunk.symbol} {chunk.text}" for chunk in self.chunks)]
+        )
+        lexical_scores = {item.chunk.chunk_id: item.score for item in lexical.matches}
+        scored: list[ScoredChunk] = []
+        for chunk, vector in zip(self.chunks, chunk_vectors, strict=True):
+            numerator = sum(a * b for a, b in zip(query_vector, vector, strict=True))
+            query_norm = math.sqrt(sum(value * value for value in query_vector))
+            vector_norm = math.sqrt(sum(value * value for value in vector))
+            semantic = numerator / (query_norm * vector_norm) if query_norm and vector_norm else 0.0
+            lexical_score = lexical_scores.get(chunk.chunk_id, 0.0)
+            score = lexical_score + semantic * 10
+            if score > 0:
+                reasons = ["semantic"] if semantic > 0 else []
+                if lexical_score:
+                    reasons.append("lexical")
+                scored.append(ScoredChunk(chunk=chunk, score=round(score, 6), reasons=reasons))
+        scored.sort(key=lambda item: (-item.score, item.chunk.path, item.chunk.start_line))
+        return RetrievalResult(query=query, matches=scored[: query.top_k], indexed_chunks=len(self.chunks))
+
 
 def _chunk_file(path: str, text: str, *, max_chunk_chars: int) -> list[CodeChunk]:
     lines = text.splitlines(keepends=True)

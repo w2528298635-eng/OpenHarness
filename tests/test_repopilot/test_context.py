@@ -49,3 +49,21 @@ def test_context_builder_deduplicates_chunks(tmp_path: Path) -> None:
 
     ids = [item.chunk.chunk_id for item in selection.selected_chunks]
     assert len(ids) == len(set(ids))
+
+
+def test_context_builder_uses_hybrid_retrieval_when_enabled(tmp_path: Path, monkeypatch) -> None:
+    from openharness.repopilot import context as context_module
+
+    (tmp_path / "mask.py").write_text("def combine_masks(a, b):\n return a | b\n", encoding="utf-8")
+    monkeypatch.setenv("REPOPILOT_HYBRID_RETRIEVAL", "1")
+
+    class FakeEncoder:
+        def __call__(self, texts):
+            return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr(context_module, "LocalEmbeddingEncoder", FakeEncoder)
+    selection = ContextBuilder(char_budget=500).build(
+        index=RepositoryIndex.build(tmp_path), query="mask failure"
+    )
+
+    assert "semantic" in selection.selected_chunks[0].reason

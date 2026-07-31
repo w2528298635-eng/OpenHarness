@@ -61,3 +61,19 @@ def test_index_respects_allowed_paths_and_file_size_limit(tmp_path: Path) -> Non
     )
 
     assert [chunk.path for chunk in index.chunks] == ["allowed.py"]
+
+
+def test_hybrid_search_can_promote_semantically_relevant_code(tmp_path: Path) -> None:
+    (tmp_path / "mask.py").write_text(
+        "def combine_masks(left, right):\n    return left | right\n", encoding="utf-8"
+    )
+    (tmp_path / "other.py").write_text("def discount(price):\n    return price\n", encoding="utf-8")
+    index = RepositoryIndex.build(tmp_path)
+
+    def encode(texts: list[str]) -> list[list[float]]:
+        return [[1.0, 0.0] if "mask" in text or "NoneType" in text else [0.0, 1.0] for text in texts]
+
+    results = index.hybrid_search(RetrievalQuery(text="NoneType mask failure"), encoder=encode)
+
+    assert results.matches[0].chunk.path == "mask.py"
+    assert "semantic" in results.matches[0].reasons

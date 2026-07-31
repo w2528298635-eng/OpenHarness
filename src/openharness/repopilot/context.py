@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from .embedding import LocalEmbeddingEncoder
 from .retrieval import CodeChunk, RepositoryIndex, RetrievalQuery, ScoredChunk
 
 
@@ -57,7 +58,10 @@ class ContextBuilder:
                             "priority_path",
                         )
                     )
-        result = index.search(RetrievalQuery(text=query, top_k=self.top_k))
+        if __import__("os").environ.get("REPOPILOT_HYBRID_RETRIEVAL") == "1":
+            result = index.hybrid_search(RetrievalQuery(text=query, top_k=self.top_k), encoder=LocalEmbeddingEncoder())
+        else:
+            result = index.search(RetrievalQuery(text=query, top_k=self.top_k))
         candidates.extend((match, "+".join(match.reasons) or "lexical") for match in result.matches)
 
         selected: list[SelectedContextChunk] = []
