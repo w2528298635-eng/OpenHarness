@@ -100,3 +100,26 @@ def test_context_builder_allows_query_planner_ablation(tmp_path: Path, monkeypat
     )
 
     assert selection.selected_chunks[0].chunk.path == "service.py"
+
+
+def test_context_builder_reserves_tight_budget_for_structural_neighbor(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "service.py").write_text(
+        "def helper(value):\n return value\n\n"
+        "def target(value):\n return value + 1\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "distractor.py").write_text(
+        "def target_documentation():\n return 'target target target target target'\n",
+        encoding="utf-8",
+    )
+
+    selection = ContextBuilder(char_budget=180, top_k=2).build(
+        index=RepositoryIndex.build(tmp_path),
+        query="target",
+    )
+
+    assert selection.selected_chunks[0].chunk.symbol == "target"
+    assert selection.selected_chunks[1].chunk.symbol == "helper"
+    assert selection.selected_chunks[1].reason == "structure"

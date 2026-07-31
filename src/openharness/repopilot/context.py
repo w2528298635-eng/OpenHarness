@@ -90,7 +90,10 @@ class ContextBuilder:
                 RetrievalQuery(text=query, top_k=self.top_k),
                 query_planning=query_planning_enabled,
             )
-        candidates.extend((match, "+".join(match.reasons) or "lexical") for match in result.matches)
+        retrieval_candidates = [
+            (match, "+".join(match.reasons) or "lexical")
+            for match in result.matches
+        ]
         matched_ids = {match.chunk.chunk_id for match in result.matches}
         structural = (
             index.expand_structure(
@@ -102,14 +105,22 @@ class ContextBuilder:
             else []
         )
         seed_score = min((match.score for match in result.matches), default=0.0)
-        candidates.extend(
+        structural_candidates = [
             (
                 ScoredChunk(chunk=chunk, score=seed_score * 0.5, reasons=["structure"]),
                 "structure",
             )
             for chunk in structural
             if chunk.chunk_id not in matched_ids
-        )
+        ]
+        structural_iterator = iter(structural_candidates)
+        for position, candidate in enumerate(retrieval_candidates):
+            candidates.append(candidate)
+            if position == 0 or (position + 1) % 3 == 0:
+                neighbor = next(structural_iterator, None)
+                if neighbor is not None:
+                    candidates.append(neighbor)
+        candidates.extend(structural_iterator)
 
         selected: list[SelectedContextChunk] = []
         seen: set[str] = set()
