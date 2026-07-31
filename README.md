@@ -17,7 +17,7 @@ This fork also includes [RepoPilot](docs/repopilot.md), a deterministic local Py
 
 RepoPilot now includes a reusable workflow runtime, bounded recovery, composite
 verification, Git worktree isolation, typed run telemetry, versioned prompts,
-explainable local repository retrieval, a 10-task evaluation suite, a local FastAPI
+planned lexical/dense code retrieval, structural context expansion, a 10-task evaluation suite, a local FastAPI
 adapter, and a second read-only repository-insight workflow. See the
 [architecture](docs/repopilot-architecture.md),
 [measured evaluation](docs/repopilot-evaluation.md), and
@@ -31,6 +31,12 @@ documents the observed failures plus two separately evaluated scikit-learn
 calibration patches. The record deliberately limits the official result to its
 actual denominator (one task per upgraded arm) and does **not** claim broad
 benchmark resolution or RAG uplift.
+
+The retrieval upgrade is backed by a deliberately limited
+[three-task development pilot](docs/evidence/swebench/dual-retrieval-pilot3.md):
+Recall@5 increased from 33.33% to 66.67% and MRR from 0.333 to 0.444. This is
+localization evidence on `n=3`, not a claim of end-to-end repair uplift or
+statistical significance; the repository keeps that boundary explicit.
 
 **ohmo** is a personal AI agent built on OpenHarness — not another chatbot, but an assistant that actually works for you over long sessions. Chat with ohmo in Feishu / Slack / Telegram / Discord, and it forks branches, writes code, runs tests, and opens PRs on its own. ohmo runs on your existing Claude Code or Codex subscription — no extra API key needed.
 

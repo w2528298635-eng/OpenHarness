@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 
 def test_evaluator_records_one_completed_instance_and_can_resume(tmp_path: Path) -> None:
     from openharness.repopilot.swebench.localization_execution import (
@@ -88,3 +90,88 @@ def test_manifest_evaluator_uses_gold_only_after_public_instance_is_loaded(
     )
 
     assert checkpoint.records[instance.instance_id].metrics.recall_at[1] == 1.0
+
+
+def test_localization_evaluator_exposes_query_and_structure_ablation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from openharness.repopilot.query_planner import QueryPlanner
+    from openharness.repopilot.swebench.localization_execution import (
+        LocalizationCheckpointStore,
+        evaluate_localization_instance,
+    )
+    from openharness.repopilot.swebench.models import DifficultyStratum, PublicInstance
+
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "service.py").write_text("TARGET = 1\n", encoding="utf-8")
+    instance = PublicInstance(
+        instance_id="owner__repo-2",
+        repo="owner/repo",
+        base_commit="abc",
+        problem_statement="TARGET is incorrect",
+        source_difficulty="<15 min fix",
+        difficulty=DifficultyStratum.EASY,
+    )
+
+    def unexpected_plan(_self, _text):
+        raise AssertionError("query planning should be disabled")
+
+    monkeypatch.setattr(QueryPlanner, "plan", unexpected_plan)
+    result = evaluate_localization_instance(
+        instance=instance,
+        repository=repository,
+        gold_patch=(
+            "diff --git a/service.py b/service.py\n"
+            "--- a/service.py\n+++ b/service.py\n@@ -1 +1 @@\n"
+            "-TARGET = 1\n+TARGET = 2\n"
+        ),
+        store=LocalizationCheckpointStore(tmp_path / "ablation.json"),
+        query_planning=False,
+        structural_expansion=False,
+    )
+
+    assert result.status == "completed"
+    with pytest.raises(ValueError, match="configuration does not match"):
+        evaluate_localization_instance(
+            instance=instance,
+            repository=repository,
+            gold_patch=(
+                "diff --git a/service.py b/service.py\n"
+                "--- a/service.py\n+++ b/service.py\n@@ -1 +1 @@\n"
+                "-TARGET = 1\n+TARGET = 2\n"
+            ),
+            store=LocalizationCheckpointStore(tmp_path / "ablation.json"),
+            query_planning=True,
+            structural_expansion=False,
+        )
+
+
+def test_localization_evaluator_rejects_empty_repository(tmp_path: Path) -> None:
+    from openharness.repopilot.swebench.localization_execution import (
+        LocalizationCheckpointStore,
+        evaluate_localization_instance,
+    )
+    from openharness.repopilot.swebench.models import DifficultyStratum, PublicInstance
+
+    repository = tmp_path / "empty"
+    repository.mkdir()
+    instance = PublicInstance(
+        instance_id="owner__empty-1",
+        repo="owner/empty",
+        base_commit="abc",
+        problem_statement="missing implementation",
+        source_difficulty="<15 min fix",
+        difficulty=DifficultyStratum.EASY,
+    )
+
+    with pytest.raises(ValueError, match="no indexable source chunks"):
+        evaluate_localization_instance(
+            instance=instance,
+            repository=repository,
+            gold_patch=(
+                "diff --git a/service.py b/service.py\n"
+                "--- a/service.py\n+++ b/service.py\n@@ -0,0 +1 @@\n+VALUE = 1\n"
+            ),
+            store=LocalizationCheckpointStore(tmp_path / "empty.json"),
+        )

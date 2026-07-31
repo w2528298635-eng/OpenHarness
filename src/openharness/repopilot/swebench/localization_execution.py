@@ -6,6 +6,7 @@ import os
 import tempfile
 from collections.abc import Iterable, Mapping
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -29,9 +30,20 @@ class LocalizationRecord(BaseModel):
     metrics: LocalizationMetrics
 
 
+class LocalizationRunConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    retrieval_strategy: Literal["lexical", "hybrid"] = "lexical"
+    query_planning: bool = True
+    structural_expansion: bool = True
+    char_budget: int = Field(default=12_000, ge=100)
+    top_k: int = Field(default=12, ge=1, le=100)
+
+
 class LocalizationCheckpoint(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    configuration: LocalizationRunConfig | None = None
     records: dict[str, LocalizationRecord] = {}
 
 
@@ -82,9 +94,25 @@ def evaluate_localization_instance(
     store: LocalizationCheckpointStore,
     char_budget: int = 12_000,
     top_k: int = 12,
+    retrieval_strategy: Literal["lexical", "hybrid"] = "lexical",
+    query_planning: bool = True,
+    structural_expansion: bool = True,
 ) -> LocalizationRecord:
     """Score a task after retrieval output is generated and checkpoint it atomically."""
     checkpoint = store.load()
+    configuration = LocalizationRunConfig(
+        retrieval_strategy=retrieval_strategy,
+        query_planning=query_planning,
+        structural_expansion=structural_expansion,
+        char_budget=char_budget,
+        top_k=top_k,
+    )
+    if checkpoint.records and checkpoint.configuration is None:
+        raise ValueError(
+            "localization checkpoint predates configuration tracking; use a new checkpoint"
+        )
+    if checkpoint.configuration is not None and checkpoint.configuration != configuration:
+        raise ValueError("localization checkpoint configuration does not match this run")
     existing = checkpoint.records.get(instance.instance_id)
     if existing is not None and existing.status == "completed":
         return existing
@@ -94,8 +122,18 @@ def evaluate_localization_instance(
     index_start = perf_counter()
     index = RepositoryIndex.build(repository)
     index_seconds = perf_counter() - index_start
+    if not index.chunks:
+        raise ValueError(
+            f"repository has no indexable source chunks: {repository}"
+        )
     retrieval_start = perf_counter()
-    selection = ContextBuilder(char_budget=char_budget, top_k=top_k).build(
+    selection = ContextBuilder(
+        char_budget=char_budget,
+        top_k=top_k,
+        retrieval_strategy=retrieval_strategy,
+        query_planning=query_planning,
+        structural_expansion=structural_expansion,
+    ).build(
         index=index,
         query=instance.problem_statement,
     )
@@ -120,6 +158,7 @@ def evaluate_localization_instance(
     )
     store.save(
         LocalizationCheckpoint(
+            configuration=configuration,
             records={**checkpoint.records, instance.instance_id: record}
         )
     )
@@ -134,6 +173,9 @@ def evaluate_localization_manifest(
     store: LocalizationCheckpointStore,
     char_budget: int = 12_000,
     top_k: int = 12,
+    retrieval_strategy: Literal["lexical", "hybrid"] = "lexical",
+    query_planning: bool = True,
+    structural_expansion: bool = True,
 ) -> LocalizationCheckpoint:
     """Evaluate a frozen public manifest; gold patches are consumed only here."""
     patches: dict[str, str] = {}
@@ -152,5 +194,8 @@ def evaluate_localization_manifest(
             store=store,
             char_budget=char_budget,
             top_k=top_k,
+            retrieval_strategy=retrieval_strategy,
+            query_planning=query_planning,
+            structural_expansion=structural_expansion,
         )
     return store.load()

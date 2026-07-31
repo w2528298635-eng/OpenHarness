@@ -41,11 +41,11 @@ def _rows() -> list[dict[str, str]]:
     ]
 
 
-def test_swebench_help_lists_six_workflow_commands() -> None:
+def test_swebench_help_lists_workflow_commands() -> None:
     result = runner.invoke(app, ["repopilot", "swebench", "--help"])
 
     assert result.exit_code == 0
-    for command in ["doctor", "prepare", "pilot", "run", "resume", "report"]:
+    for command in ["doctor", "prepare", "pilot", "run", "resume", "report", "localize"]:
         assert command in result.stdout
 
 

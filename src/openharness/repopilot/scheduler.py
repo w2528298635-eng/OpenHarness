@@ -329,6 +329,7 @@ class RepoPilotScheduler:
             char_budget=config.context_char_budget,
             top_k=config.top_k,
             retrieval_strategy=config.strategy,
+            query_planning=config.query_planning,
             structural_expansion=config.structural_expansion,
         ).build(
             index=index,

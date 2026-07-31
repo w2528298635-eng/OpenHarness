@@ -80,3 +80,23 @@ def test_context_builder_includes_structural_neighbors(tmp_path: Path) -> None:
 
     assert {item.chunk.symbol for item in selection.selected_chunks} >= {"target", "helper"}
     assert any("structure" in item.reason for item in selection.selected_chunks)
+
+
+def test_context_builder_allows_query_planner_ablation(tmp_path: Path, monkeypatch) -> None:
+    from openharness.repopilot.query_planner import QueryPlanner
+
+    (tmp_path / "service.py").write_text(
+        "def combine_masks(left, right):\n return left | right\n",
+        encoding="utf-8",
+    )
+
+    def unexpected_plan(_self, _text):
+        raise AssertionError("query planner should be disabled")
+
+    monkeypatch.setattr(QueryPlanner, "plan", unexpected_plan)
+    selection = ContextBuilder(char_budget=500, query_planning=False).build(
+        index=RepositoryIndex.build(tmp_path),
+        query="combine_masks",
+    )
+
+    assert selection.selected_chunks[0].chunk.path == "service.py"

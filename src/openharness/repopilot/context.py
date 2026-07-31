@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from pydantic import BaseModel, Field
 
 from .embedding import LocalEmbeddingEncoder
@@ -27,6 +29,7 @@ class ContextBuilder:
         char_budget: int = 12_000,
         top_k: int = 12,
         retrieval_strategy: str = "lexical",
+        query_planning: bool = True,
         structural_expansion: bool = True,
     ):
         if char_budget < 100:
@@ -34,6 +37,7 @@ class ContextBuilder:
         self.char_budget = char_budget
         self.top_k = top_k
         self.retrieval_strategy = retrieval_strategy
+        self.query_planning = query_planning
         self.structural_expansion = structural_expansion
 
     def build(
@@ -69,12 +73,23 @@ class ContextBuilder:
                     )
         hybrid_enabled = (
             self.retrieval_strategy == "hybrid"
-            or __import__("os").environ.get("REPOPILOT_HYBRID_RETRIEVAL") == "1"
+            or os.environ.get("REPOPILOT_HYBRID_RETRIEVAL") == "1"
+        )
+        query_planning_enabled = (
+            self.query_planning
+            and os.environ.get("REPOPILOT_QUERY_PLANNING", "1") != "0"
         )
         if hybrid_enabled:
-            result = index.hybrid_search(RetrievalQuery(text=query, top_k=self.top_k), encoder=LocalEmbeddingEncoder())
+            result = index.hybrid_search(
+                RetrievalQuery(text=query, top_k=self.top_k),
+                encoder=LocalEmbeddingEncoder(),
+                query_planning=query_planning_enabled,
+            )
         else:
-            result = index.search(RetrievalQuery(text=query, top_k=self.top_k))
+            result = index.search(
+                RetrievalQuery(text=query, top_k=self.top_k),
+                query_planning=query_planning_enabled,
+            )
         candidates.extend((match, "+".join(match.reasons) or "lexical") for match in result.matches)
         matched_ids = {match.chunk.chunk_id for match in result.matches}
         structural = (
@@ -83,6 +98,7 @@ class ContextBuilder:
                 limit=max(self.top_k * 2, self.top_k + 4),
             )
             if self.structural_expansion
+            and os.environ.get("REPOPILOT_STRUCTURAL_EXPANSION", "1") != "0"
             else []
         )
         seed_score = min((match.score for match in result.matches), default=0.0)

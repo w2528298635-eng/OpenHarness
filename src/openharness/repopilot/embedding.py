@@ -34,21 +34,40 @@ class LocalEmbeddingEncoder:
         *,
         top_k: int,
     ) -> list[tuple[int, float]]:
+        return self.rank_many([query], chunks, top_k=top_k)
+
+    def rank_many(
+        self,
+        queries: list[str] | tuple[str, ...],
+        chunks: list[CodeChunk],
+        *,
+        top_k: int,
+    ) -> list[tuple[int, float]]:
+        selected_queries = [query.strip() for query in queries if query.strip()]
+        if not selected_queries:
+            raise ValueError("at least one dense retrieval query is required")
+        if not chunks:
+            self.last_stats = {"cache_hits": 0, "cache_misses": 0}
+            return []
         max_seq_length = 128
         texts = [f"{chunk.path} {chunk.symbol}\n{chunk.text[:400]}" for chunk in chunks]
+        embedding_ids = [hashlib.sha256(text.encode()).hexdigest() for text in texts]
         identity = hashlib.sha256(
-            ("dense-v2-128\n" + "\n".join(chunk.chunk_id for chunk in chunks)).encode()
+            ("dense-content-v3-128\n" + "\n".join(embedding_ids)).encode()
         ).hexdigest()
         worker = Path(__file__).with_name("embedding_worker.py")
         payload = {
-            "query": query,
+            "query": selected_queries[0],
+            "queries": selected_queries,
             "texts": texts,
             "chunk_ids": [chunk.chunk_id for chunk in chunks],
+            "embedding_ids": embedding_ids,
             "top_k": top_k,
             "max_seq_length": max_seq_length,
             "cache_file": str(self.index_cache / f"{identity}.npy"),
             "vector_store": str(self.index_cache / "embeddings-v2.sqlite3"),
-            "model_key": "bge-small-en-v1.5-128-v2",
+            "model_key": "bge-small-en-v1.5-128-content-v3",
+            "legacy_model_key": "bge-small-en-v1.5-128-v2",
             "model": "BAAI/bge-small-en-v1.5",
             "model_cache": self.cache,
         }
@@ -57,9 +76,12 @@ class LocalEmbeddingEncoder:
             input=json.dumps(payload),
             text=True,
             capture_output=True,
-            check=True,
+            check=False,
             timeout=1800,
         )
+        if getattr(completed, "returncode", 0):
+            detail = completed.stderr.strip() or "worker returned no stderr"
+            raise RuntimeError(f"local embedding worker failed: {detail}")
         response = json.loads(completed.stdout)
         self.last_stats = {
             "cache_hits": int(response["cache_hits"]),

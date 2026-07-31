@@ -7,6 +7,10 @@ from pydantic import BaseModel, ConfigDict
 _ERROR = re.compile(r"\b[A-Z][A-Za-z0-9_]*(?:Error|Exception)\b")
 _BACKTICK = re.compile(r"`([A-Za-z_][A-Za-z0-9_.]*)`")
 _DOTTED = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*){2,}\b")
+_PYTHON_PATH = re.compile(
+    r"\b(?:[A-Za-z_][A-Za-z0-9_-]*/)+[A-Za-z_][A-Za-z0-9_-]*\.py\b"
+)
+_CAMEL_CASE = re.compile(r"\b[A-Z][a-z0-9]+(?:[A-Z][A-Za-z0-9]*)+\b")
 _IDENTIFIER = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\b")
 
 
@@ -26,17 +30,31 @@ class QueryPlanner:
     def plan(self, text: str) -> QueryPlan:
         original = " ".join(text.split())
         errors = tuple(dict.fromkeys(_ERROR.findall(original)))
-        paths = tuple(dict.fromkeys(_DOTTED.findall(original)))
+        paths = tuple(
+            dict.fromkeys([*_PYTHON_PATH.findall(original), *_DOTTED.findall(original)])
+        )
         quoted = _BACKTICK.findall(original)
         identifiers = tuple(
             dict.fromkeys(
                 value
-                for value in [*quoted, *_IDENTIFIER.findall(original)]
-                if "_" in value and value not in paths
+                for value in [
+                    *quoted,
+                    *_CAMEL_CASE.findall(original),
+                    *_IDENTIFIER.findall(original),
+                ]
+                if ("_" in value or value in quoted or value in _CAMEL_CASE.findall(original))
+                and value not in paths
+                and value not in errors
             )
         )
-        signals = " ".join((*errors, *identifiers, *paths))
-        queries = tuple(dict.fromkeys(value for value in (original, signals) if value))
+        symbol_query = " ".join((*identifiers, *errors))
+        path_query = " ".join(paths)
+        signals = " ".join((*identifiers, *errors, *paths))
+        queries = tuple(
+            dict.fromkeys(
+                value for value in (original, symbol_query, path_query, signals) if value
+            )
+        )
         return QueryPlan(
             original=original,
             errors=errors,

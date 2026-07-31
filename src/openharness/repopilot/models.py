@@ -55,6 +55,7 @@ class BudgetUsage(BaseModel):
 class RetrievalConfig(BaseModel):
     enabled: bool = False
     strategy: Literal["lexical", "hybrid"] = "lexical"
+    query_planning: bool = True
     structural_expansion: bool = True
     max_file_bytes: int = Field(default=200_000, ge=1024)
     max_chunk_chars: int = Field(default=4000, ge=200)

@@ -7,6 +7,7 @@ allowed_paths: [discount.py]
 retrieval:
   enabled: true
   strategy: hybrid
+  query_planning: true
   structural_expansion: true
   context_char_budget: 6000
 budgets:

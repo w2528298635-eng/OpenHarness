@@ -102,9 +102,14 @@ class RepositoryIndex(BaseModel):
             )
         return cls(root=resolved, chunks=chunks)
 
-    def search(self, query: RetrievalQuery) -> RetrievalResult:
-        plan = QueryPlanner().plan(query.text)
-        query_terms = _tokens(" ".join(plan.queries))
+    def search(
+        self,
+        query: RetrievalQuery,
+        *,
+        query_planning: bool = True,
+    ) -> RetrievalResult:
+        queries = QueryPlanner().plan(query.text).queries if query_planning else [query.text]
+        query_terms = _tokens(" ".join(queries))
         if not query_terms or not self.chunks:
             return RetrievalResult(
                 query=query,
@@ -157,12 +162,31 @@ class RepositoryIndex(BaseModel):
             indexed_chunks=len(self.chunks),
         )
 
-    def hybrid_search(self, query: RetrievalQuery, *, encoder) -> RetrievalResult:
+    def hybrid_search(
+        self,
+        query: RetrievalQuery,
+        *,
+        encoder,
+        query_planning: bool = True,
+    ) -> RetrievalResult:
         """Fuse lexical relevance with locally computed cosine similarity."""
-        lexical = self.search(RetrievalQuery(text=query.text, top_k=100))
+        if not self.chunks:
+            return RetrievalResult(query=query, matches=[], indexed_chunks=0)
+        lexical = self.search(
+            RetrievalQuery(text=query.text, top_k=100),
+            query_planning=query_planning,
+        )
         candidates = lexical.matches
-        if hasattr(encoder, "rank"):
-            dense = encoder.rank(query.text, self.chunks, top_k=100)
+        if hasattr(encoder, "rank_many") or hasattr(encoder, "rank"):
+            if hasattr(encoder, "rank_many"):
+                dense_queries = (
+                    QueryPlanner().plan(query.text).queries
+                    if query_planning
+                    else (query.text,)
+                )
+                dense = encoder.rank_many(dense_queries, self.chunks, top_k=100)
+            else:
+                dense = encoder.rank(query.text, self.chunks, top_k=100)
             lexical_scores = {item.chunk.chunk_id: item.score for item in candidates}
             maximum_lexical = max(lexical_scores.values(), default=1.0)
             dense_scores = {
@@ -216,7 +240,7 @@ class RepositoryIndex(BaseModel):
         return RetrievalResult(query=query, matches=scored[: query.top_k], indexed_chunks=len(self.chunks))
 
     def expand_structure(self, seeds: list[CodeChunk], *, limit: int = 12) -> list[CodeChunk]:
-        """Add same-file definitions and chunks that reference seed symbols."""
+        """Add callers/references and nearby same-file definitions for seed chunks."""
         ordered: list[CodeChunk] = []
         seen: set[str] = set()
 
@@ -227,15 +251,39 @@ class RepositoryIndex(BaseModel):
 
         for seed in seeds:
             add(seed)
+
+        references: list[CodeChunk] = []
         for seed in seeds:
-            for chunk in self.chunks:
-                if chunk.path == seed.path:
-                    add(chunk)
             if seed.symbol:
                 symbol = re.compile(rf"\b{re.escape(seed.symbol)}\b")
                 for chunk in self.chunks:
-                    if chunk.chunk_id != seed.chunk_id and symbol.search(chunk.text):
-                        add(chunk)
+                    if (
+                        chunk.path != seed.path
+                        and chunk.chunk_id != seed.chunk_id
+                        and symbol.search(chunk.text)
+                    ):
+                        references.append(chunk)
+        for chunk in sorted(
+            references,
+            key=lambda item: (item.path, item.start_line, item.chunk_id),
+        ):
+            add(chunk)
+
+        same_file: list[tuple[int, CodeChunk]] = []
+        for seed in seeds:
+            for chunk in self.chunks:
+                if chunk.path == seed.path and chunk.chunk_id != seed.chunk_id:
+                    same_file.append((abs(chunk.start_line - seed.start_line), chunk))
+        for _, chunk in sorted(
+            same_file,
+            key=lambda item: (
+                item[0],
+                item[1].path,
+                item[1].start_line,
+                item[1].chunk_id,
+            ),
+        ):
+            add(chunk)
         return ordered
 
 

@@ -95,6 +95,9 @@ verify_command: [python, -m, pytest, -q, tests/test_target.py]
 allowed_paths: ["src/**"]
 retrieval:
   enabled: true
+  strategy: hybrid
+  query_planning: true
+  structural_expansion: true
   max_file_bytes: 200000
   max_chunk_chars: 4000
   context_char_budget: 12000
@@ -133,15 +136,51 @@ Git worktree 是隔离副本，不是安全沙箱。
 Observation 必须回传给模型，因为模型需要它判断下一步；同时写入事件日志是为了
 失败复盘、断点恢复、评测和面试时展示完整轨迹。
 
-## 本地检索不是“接了向量库”
+## 代码 RAG：规划、双路召回与结构扩展
 
 `RepositoryIndex` 会忽略 Git、缓存、虚拟环境、二进制和超大文件；Python 文件按
-AST 顶层类/函数切块，其他文本按大小切块。检索使用 TF-IDF 风格词项分数，并对
-精确符号名和路径加权。`ContextBuilder` 优先放入验证失败、已怀疑文件和高分片段，
-再按字符预算截断，同时保存每个片段的路径、行号、分数和选择原因。
+AST 顶层类/函数切块，其他文本按大小切块。`QueryPlanner` 从问题描述中抽取异常名、
+代码标识符和模块路径，并生成多条面向代码搜索的查询。关键词通道使用 TF-IDF 风格
+词项分数和符号/路径加权；语义通道使用本地 `BAAI/bge-small-en-v1.5` 对整个仓库独立
+取 top-100。两路分数归一化后按 `0.45 / 0.55` 融合，因此语义通道可以召回完全不在
+关键词候选集中的代码。
 
-这个设计没有 embedding 依赖，适合本地小仓库和可解释实验；它不代表已经解决大型
-代码库的语义检索问题。
+融合结果随后按代码结构扩展：补入同文件定义，以及引用种子符号的其他片段。
+`ContextBuilder` 再优先放入验证失败、已怀疑文件和高分片段，按字符预算截断，并保存
+路径、行号、分数和选择原因。向量缓存在 E 盘 SQLite 中，后续相同代码片段无需重复
+编码。若没有安装本地 embedding 环境，可以把 `strategy` 改回 `lexical`。
+
+为了做公平消融，同一套代码支持以下环境开关：
+
+```powershell
+$env:REPOPILOT_HYBRID_RETRIEVAL = "1"      # 开启独立语义召回
+$env:REPOPILOT_QUERY_PLANNING = "0"        # 关闭 Query Planner
+$env:REPOPILOT_STRUCTURAL_EXPANSION = "0"  # 关闭结构扩展
+```
+
+正式评测建议使用可恢复 CLI，而不是环境变量。每个实验臂必须使用不同 checkpoint；
+checkpoint 会记录配置并拒绝混用，避免把不同算法的结果拼在一起：
+
+```powershell
+openh repopilot swebench localize docs\evidence\swebench\pilot-manifest.json `
+  --checkpoint .openharness-swebench\lexical-pilot3.json `
+  --repository-root C:\path\to\prepared\worktrees `
+  --strategy lexical --no-query-planning --no-structural-expansion
+
+openh repopilot swebench localize docs\evidence\swebench\pilot-manifest.json `
+  --checkpoint .openharness-swebench\dual-planned-structural-pilot3.json `
+  --repository-root C:\path\to\prepared\worktrees `
+  --strategy hybrid --query-planning --structural-expansion
+```
+
+Embedding 缓存按实际编码文本的 SHA-256 寻址，而不是按会随行号变化的 chunk ID
+寻址；因此同一仓库不同 commit 中未变化的代码可以复用向量。Query Planner 的多条
+查询会在一次 worker 调用中共同编码，并以各查询相似度的最大值形成语义排序，避免
+重复加载模型。
+
+三题开发集的组合结果从 Recall@5 33.33% 提升到 66.67%，MRR 从 0.333 提升到
+0.444；样本很小，只能作为诊断证据，不能外推成整体成功率。详见
+[三题双路检索记录](evidence/swebench/dual-retrieval-pilot3.md)。
 
 ## 评测、API 和第二工作流
 

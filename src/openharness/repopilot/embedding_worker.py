@@ -16,6 +16,7 @@ def main() -> None:
     model.max_seq_length = int(payload["max_seq_length"])
     texts = payload["texts"]
     chunk_ids = payload["chunk_ids"]
+    embedding_ids = payload.get("embedding_ids", chunk_ids)
     vector_store = Path(payload["vector_store"])
     vector_store.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(vector_store)
@@ -25,38 +26,61 @@ def main() -> None:
         "PRIMARY KEY (model_key, chunk_id))"
     )
 
-    def persist(values: np.ndarray) -> None:
+    def persist(ids: list[str], values: np.ndarray) -> None:
         connection.executemany(
             "INSERT OR IGNORE INTO embeddings(model_key, chunk_id, vector) VALUES (?, ?, ?)",
             [
-                (payload["model_key"], chunk_id, value.astype(np.float32).tobytes())
-                for chunk_id, value in zip(chunk_ids, values, strict=True)
+                (payload["model_key"], embedding_id, value.astype(np.float32).tobytes())
+                for embedding_id, value in zip(ids, values, strict=True)
             ],
         )
         connection.commit()
 
-    if cache_file.exists():
-        embeddings = np.load(cache_file)
-        persist(embeddings)
-        cache_hits = len(chunk_ids)
-        cache_misses = 0
-    else:
-        cache_file.parent.mkdir(parents=True, exist_ok=True)
+    def load_cached(model_key: str, ids: list[str]) -> dict[str, np.ndarray]:
         cached: dict[str, np.ndarray] = {}
-        for start in range(0, len(chunk_ids), 800):
-            batch = chunk_ids[start : start + 800]
+        for start in range(0, len(ids), 800):
+            batch = ids[start : start + 800]
+            if not batch:
+                continue
             placeholders = ",".join("?" for _ in batch)
             rows = connection.execute(
                 f"SELECT chunk_id, vector FROM embeddings "
                 f"WHERE model_key = ? AND chunk_id IN ({placeholders})",
-                [payload["model_key"], *batch],
+                [model_key, *batch],
             )
             cached.update(
-                (chunk_id, np.frombuffer(vector, dtype=np.float32))
-                for chunk_id, vector in rows
+                (cache_id, np.frombuffer(vector, dtype=np.float32))
+                for cache_id, vector in rows
             )
-        missing = [index for index, chunk_id in enumerate(chunk_ids) if chunk_id not in cached]
-        cache_hits = len(cached)
+        return cached
+
+    if cache_file.exists():
+        embeddings = np.load(cache_file)
+        persist(embedding_ids, embeddings)
+        cache_hits = len(embedding_ids)
+        cache_misses = 0
+    else:
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        cached = load_cached(payload["model_key"], embedding_ids)
+        unresolved = [
+            index
+            for index, embedding_id in enumerate(embedding_ids)
+            if embedding_id not in cached
+        ]
+        legacy_model_key = payload.get("legacy_model_key")
+        if unresolved and legacy_model_key:
+            legacy_ids = [chunk_ids[index] for index in unresolved]
+            legacy = load_cached(legacy_model_key, legacy_ids)
+            for index in unresolved:
+                legacy_value = legacy.get(chunk_ids[index])
+                if legacy_value is not None:
+                    cached[embedding_ids[index]] = legacy_value
+        missing = [
+            index
+            for index, embedding_id in enumerate(embedding_ids)
+            if embedding_id not in cached
+        ]
+        cache_hits = len(embedding_ids) - len(missing)
         cache_misses = len(missing)
         generated = model.encode(
             [texts[index] for index in missing],
@@ -67,20 +91,26 @@ def main() -> None:
         generated_by_index = dict(zip(missing, generated, strict=True))
         embeddings = np.stack(
             [
-                cached[chunk_id] if chunk_id in cached else generated_by_index[index]
-                for index, chunk_id in enumerate(chunk_ids)
+                cached[embedding_id]
+                if embedding_id in cached
+                else generated_by_index[index]
+                for index, embedding_id in enumerate(embedding_ids)
             ]
         )
-        persist(embeddings)
+        persist(embedding_ids, embeddings)
         temporary = cache_file.with_suffix(".tmp.npy")
         np.save(temporary, embeddings)
         temporary.replace(cache_file)
-    query = model.encode(
-        ["Represent this sentence for searching relevant passages: " + payload["query"]],
+    queries = payload.get("queries", [payload["query"]])
+    query_vectors = model.encode(
+        [
+            "Represent this sentence for searching relevant passages: " + query
+            for query in queries
+        ],
         normalize_embeddings=True,
         show_progress_bar=False,
-    )[0]
-    scores = embeddings @ query
+    )
+    scores = (embeddings @ query_vectors.T).max(axis=1)
     count = min(int(payload["top_k"]), len(scores))
     indices = np.argsort(-scores)[:count]
     print(

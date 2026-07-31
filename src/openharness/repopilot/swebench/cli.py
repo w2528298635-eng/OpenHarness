@@ -21,6 +21,10 @@ from .dataset import (
 from .docker_runner import OfficialHarnessRunner, run_doctor
 from .execution import evaluate_pending_matrix
 from .experiment import build_experiment_adapters, run_inference_matrix
+from .localization_execution import (
+    LocalizationCheckpointStore,
+    evaluate_localization_manifest,
+)
 from .models import SampleManifest, SamplingConfig
 from .orchestration import CheckpointStore, RunRecord, build_run_keys
 from .reporting import ExperimentReport, render_report_markdown
@@ -365,3 +369,45 @@ def report_command(
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(markdown, encoding="utf-8")
     typer.echo(f"report: {output.resolve()}")
+
+
+@swebench_app.command("localize")
+def localize_command(
+    manifest: Annotated[Path, typer.Argument(exists=True, dir_okay=False)],
+    checkpoint: Annotated[Path, typer.Option("--checkpoint")],
+    repository_root: Annotated[Path, typer.Option("--repository-root")],
+    strategy: Annotated[str, typer.Option("--strategy")] = "lexical",
+    query_planning: Annotated[
+        bool,
+        typer.Option("--query-planning/--no-query-planning"),
+    ] = True,
+    structural_expansion: Annotated[
+        bool,
+        typer.Option("--structural-expansion/--no-structural-expansion"),
+    ] = True,
+    char_budget: Annotated[int, typer.Option("--char-budget", min=100)] = 12_000,
+    top_k: Annotated[int, typer.Option("--top-k", min=1, max=100)] = 12,
+) -> None:
+    """Run resumable, post-hoc code-localization evaluation and ablations."""
+    if strategy not in {"lexical", "hybrid"}:
+        raise typer.BadParameter(
+            "strategy must be lexical or hybrid",
+            param_hint="strategy",
+        )
+    selected = SampleManifest.model_validate_json(manifest.read_text(encoding="utf-8"))
+    state = evaluate_localization_manifest(
+        instances=selected.instances,
+        public_rows_with_gold=HuggingFaceDatasetProvider(
+            dataset_name=selected.dataset_name,
+            revision=selected.dataset_revision,
+        ).rows(),
+        repository_root=repository_root,
+        store=LocalizationCheckpointStore(checkpoint),
+        char_budget=char_budget,
+        top_k=top_k,
+        retrieval_strategy=strategy,
+        query_planning=query_planning,
+        structural_expansion=structural_expansion,
+    )
+    typer.echo(f"checkpoint: {checkpoint.resolve()}")
+    typer.echo(f"completed: {len(state.records)}")

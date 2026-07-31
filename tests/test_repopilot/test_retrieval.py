@@ -80,6 +80,20 @@ def test_hybrid_search_can_promote_semantically_relevant_code(tmp_path: Path) ->
     assert "semantic" in results.matches[0].reasons
 
 
+def test_hybrid_search_returns_empty_without_invoking_encoder(tmp_path: Path) -> None:
+    class UnexpectedEncoder:
+        def rank_many(self, *_args, **_kwargs):
+            raise AssertionError("empty indexes should not invoke the encoder")
+
+    result = RepositoryIndex.build(tmp_path).hybrid_search(
+        RetrievalQuery(text="missing code", top_k=5),
+        encoder=UnexpectedEncoder(),
+    )
+
+    assert result.matches == []
+    assert result.indexed_chunks == 0
+
+
 def test_query_planner_extracts_error_symbols_paths_and_multiple_queries() -> None:
     plan = QueryPlanner().plan(
         "TypeError: unsupported operand in `combine_masks`; see astropy.nddata.mixins.ndarithmetic"
@@ -89,6 +103,37 @@ def test_query_planner_extracts_error_symbols_paths_and_multiple_queries() -> No
     assert "combine_masks" in plan.identifiers
     assert "astropy.nddata.mixins.ndarithmetic" in plan.paths
     assert len(plan.queries) >= 2
+
+
+def test_query_planner_extracts_python_paths_and_camel_case_symbols() -> None:
+    plan = QueryPlanner().plan(
+        "ScalarFormatter loses offsets in sklearn/pipeline.py and raises ValueError"
+    )
+
+    assert "ScalarFormatter" in plan.identifiers
+    assert "sklearn/pipeline.py" in plan.paths
+    assert any(query == "ScalarFormatter ValueError" for query in plan.queries)
+    assert "sklearn/pipeline.py" in plan.queries
+
+
+def test_lexical_search_can_disable_query_planning(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "service.py").write_text(
+        "def combine_masks(left, right):\n return left | right\n",
+        encoding="utf-8",
+    )
+    index = RepositoryIndex.build(tmp_path)
+
+    def unexpected_plan(_self, _text):
+        raise AssertionError("query planner should be bypassed")
+
+    monkeypatch.setattr(QueryPlanner, "plan", unexpected_plan)
+
+    result = index.search(
+        RetrievalQuery(text="combine_masks", top_k=1),
+        query_planning=False,
+    )
+
+    assert result.matches[0].chunk.path == "service.py"
 
 
 def test_hybrid_search_merges_independent_dense_candidates(tmp_path: Path) -> None:
@@ -108,6 +153,34 @@ def test_hybrid_search_merges_independent_dense_candidates(tmp_path: Path) -> No
     assert any("dense" in match.reasons for match in result.matches)
 
 
+def test_query_planner_drives_dense_multi_query_retrieval(tmp_path: Path) -> None:
+    (tmp_path / "mask.py").write_text(
+        "def combine_masks(left, right):\n return left | right\n",
+        encoding="utf-8",
+    )
+    index = RepositoryIndex.build(tmp_path)
+
+    class DenseRanker:
+        def __init__(self):
+            self.queries = ()
+
+        def rank_many(self, queries, chunks, *, top_k):
+            self.queries = tuple(queries)
+            return [(0, 0.9)]
+
+    ranker = DenseRanker()
+    index.hybrid_search(
+        RetrievalQuery(
+            text="TypeError while calling `combine_masks` in astropy.nddata.mask",
+            top_k=1,
+        ),
+        encoder=ranker,
+    )
+
+    assert len(ranker.queries) >= 2
+    assert any("combine_masks" in query for query in ranker.queries[1:])
+
+
 def test_structure_expansion_adds_same_file_and_symbol_reference_neighbors(tmp_path: Path) -> None:
     (tmp_path / "service.py").write_text(
         "def normalize_mask(mask):\n return mask\n\n"
@@ -124,3 +197,24 @@ def test_structure_expansion_adds_same_file_and_symbol_reference_neighbors(tmp_p
     expanded = index.expand_structure([seed], limit=4)
 
     assert {chunk.symbol for chunk in expanded} >= {"combine_masks", "normalize_mask", "apply_mask"}
+
+
+def test_structure_expansion_reserves_space_for_cross_file_callers(tmp_path: Path) -> None:
+    helpers = "\n\n".join(
+        f"def helper_{index}():\n return {index}" for index in range(12)
+    )
+    (tmp_path / "service.py").write_text(
+        f"{helpers}\n\ndef target(value):\n return value\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "api.py").write_text(
+        "from service import target\n\ndef call_target(value):\n return target(value)\n",
+        encoding="utf-8",
+    )
+    index = RepositoryIndex.build(tmp_path)
+    seed = next(chunk for chunk in index.chunks if chunk.symbol == "target")
+
+    expanded = index.expand_structure([seed], limit=5)
+
+    assert any(chunk.path == "service.py" and chunk.chunk_id != seed.chunk_id for chunk in expanded)
+    assert any(chunk.path == "api.py" and chunk.symbol == "call_target" for chunk in expanded)
