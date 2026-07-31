@@ -56,7 +56,9 @@ def main() -> None:
 
     if cache_file.exists():
         embeddings = np.load(cache_file)
-        persist(embedding_ids, embeddings)
+        # This exact repository vector matrix was persisted when it was built.
+        # Re-inserting every row here turns a cache hit into thousands of no-op
+        # SQLite writes and is unnecessary for ranking or cross-revision reuse.
         cache_hits = len(embedding_ids)
         cache_misses = 0
     else:
