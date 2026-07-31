@@ -14,7 +14,9 @@ def test_local_encoder_rank_uses_independent_dense_worker_and_stable_cache(
     def fake_run(argv, **kwargs):
         captured["argv"] = argv
         captured["payload"] = json.loads(kwargs["input"])
-        return SimpleNamespace(stdout='[[1, 0.91]]')
+        return SimpleNamespace(
+            stdout='{"ranked": [[1, 0.91]], "cache_hits": 1, "cache_misses": 1}'
+        )
 
     monkeypatch.setattr("openharness.repopilot.embedding.subprocess.run", fake_run)
     encoder = LocalEmbeddingEncoder(cache_directory=tmp_path)
@@ -26,6 +28,10 @@ def test_local_encoder_rank_uses_independent_dense_worker_and_stable_cache(
     result = encoder.rank("semantic request", chunks, top_k=1)
 
     assert result == [(1, 0.91)]
+    assert encoder.last_stats == {"cache_hits": 1, "cache_misses": 1}
     assert captured["payload"]["texts"] == ["a.py \nalpha", "b.py \nbeta"]
     assert captured["payload"]["top_k"] == 1
+    assert captured["payload"]["max_seq_length"] == 128
+    assert captured["payload"]["chunk_ids"] == ["a", "b"]
+    assert captured["payload"]["vector_store"].endswith("embeddings-v2.sqlite3")
     assert str(tmp_path) in captured["payload"]["cache_file"]
