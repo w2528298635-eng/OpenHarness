@@ -157,12 +157,14 @@ class RepositoryIndex(BaseModel):
     def hybrid_search(self, query: RetrievalQuery, *, encoder) -> RetrievalResult:
         """Fuse lexical relevance with locally computed cosine similarity."""
         lexical = self.search(RetrievalQuery(text=query.text, top_k=100))
+        candidates = lexical.matches
         query_vector, *chunk_vectors = encoder(
-            [query.text, *(f"{chunk.path} {chunk.symbol} {chunk.text}" for chunk in self.chunks)]
+            [query.text, *(f"{item.chunk.path} {item.chunk.symbol} {item.chunk.text}" for item in candidates)]
         )
-        lexical_scores = {item.chunk.chunk_id: item.score for item in lexical.matches}
+        lexical_scores = {item.chunk.chunk_id: item.score for item in candidates}
         scored: list[ScoredChunk] = []
-        for chunk, vector in zip(self.chunks, chunk_vectors, strict=True):
+        for lexical_match, vector in zip(candidates, chunk_vectors, strict=True):
+            chunk = lexical_match.chunk
             numerator = sum(a * b for a, b in zip(query_vector, vector, strict=True))
             query_norm = math.sqrt(sum(value * value for value in query_vector))
             vector_norm = math.sqrt(sum(value * value for value in vector))
