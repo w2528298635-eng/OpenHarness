@@ -328,6 +328,8 @@ class RepoPilotScheduler:
         context = ContextBuilder(
             char_budget=config.context_char_budget,
             top_k=config.top_k,
+            retrieval_strategy=config.strategy,
+            structural_expansion=config.structural_expansion,
         ).build(
             index=index,
             query=" ".join(

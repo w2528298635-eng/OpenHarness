@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from openharness.repopilot.query_planner import QueryPlanner
 from openharness.repopilot.retrieval import RepositoryIndex, RetrievalQuery
 
 
@@ -77,3 +78,49 @@ def test_hybrid_search_can_promote_semantically_relevant_code(tmp_path: Path) ->
 
     assert results.matches[0].chunk.path == "mask.py"
     assert "semantic" in results.matches[0].reasons
+
+
+def test_query_planner_extracts_error_symbols_paths_and_multiple_queries() -> None:
+    plan = QueryPlanner().plan(
+        "TypeError: unsupported operand in `combine_masks`; see astropy.nddata.mixins.ndarithmetic"
+    )
+
+    assert "TypeError" in plan.errors
+    assert "combine_masks" in plan.identifiers
+    assert "astropy.nddata.mixins.ndarithmetic" in plan.paths
+    assert len(plan.queries) >= 2
+
+
+def test_hybrid_search_merges_independent_dense_candidates(tmp_path: Path) -> None:
+    (tmp_path / "literal.py").write_text("def requested_name():\n return 1\n", encoding="utf-8")
+    (tmp_path / "semantic.py").write_text("def unrelated_words():\n return 2\n", encoding="utf-8")
+    index = RepositoryIndex.build(tmp_path)
+
+    class DenseRanker:
+        def rank(self, query, chunks, *, top_k):
+            return [(next(i for i, chunk in enumerate(chunks) if chunk.path == "semantic.py"), 0.99)]
+
+    result = index.hybrid_search(
+        RetrievalQuery(text="requested_name", top_k=2), encoder=DenseRanker()
+    )
+
+    assert {match.chunk.path for match in result.matches} == {"literal.py", "semantic.py"}
+    assert any("dense" in match.reasons for match in result.matches)
+
+
+def test_structure_expansion_adds_same_file_and_symbol_reference_neighbors(tmp_path: Path) -> None:
+    (tmp_path / "service.py").write_text(
+        "def normalize_mask(mask):\n return mask\n\n"
+        "def combine_masks(left, right):\n return normalize_mask(left) | normalize_mask(right)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "api.py").write_text(
+        "from service import combine_masks\n\ndef apply_mask(a, b):\n return combine_masks(a, b)\n",
+        encoding="utf-8",
+    )
+    index = RepositoryIndex.build(tmp_path)
+    seed = next(chunk for chunk in index.chunks if chunk.symbol == "combine_masks")
+
+    expanded = index.expand_structure([seed], limit=4)
+
+    assert {chunk.symbol for chunk in expanded} >= {"combine_masks", "normalize_mask", "apply_mask"}

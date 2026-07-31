@@ -21,11 +21,20 @@ class ContextSelection(BaseModel):
 
 
 class ContextBuilder:
-    def __init__(self, *, char_budget: int = 12_000, top_k: int = 12):
+    def __init__(
+        self,
+        *,
+        char_budget: int = 12_000,
+        top_k: int = 12,
+        retrieval_strategy: str = "lexical",
+        structural_expansion: bool = True,
+    ):
         if char_budget < 100:
             raise ValueError("context char budget must be at least 100")
         self.char_budget = char_budget
         self.top_k = top_k
+        self.retrieval_strategy = retrieval_strategy
+        self.structural_expansion = structural_expansion
 
     def build(
         self,
@@ -58,11 +67,33 @@ class ContextBuilder:
                             "priority_path",
                         )
                     )
-        if __import__("os").environ.get("REPOPILOT_HYBRID_RETRIEVAL") == "1":
+        hybrid_enabled = (
+            self.retrieval_strategy == "hybrid"
+            or __import__("os").environ.get("REPOPILOT_HYBRID_RETRIEVAL") == "1"
+        )
+        if hybrid_enabled:
             result = index.hybrid_search(RetrievalQuery(text=query, top_k=self.top_k), encoder=LocalEmbeddingEncoder())
         else:
             result = index.search(RetrievalQuery(text=query, top_k=self.top_k))
         candidates.extend((match, "+".join(match.reasons) or "lexical") for match in result.matches)
+        matched_ids = {match.chunk.chunk_id for match in result.matches}
+        structural = (
+            index.expand_structure(
+                [match.chunk for match in result.matches],
+                limit=max(self.top_k * 2, self.top_k + 4),
+            )
+            if self.structural_expansion
+            else []
+        )
+        seed_score = min((match.score for match in result.matches), default=0.0)
+        candidates.extend(
+            (
+                ScoredChunk(chunk=chunk, score=seed_score * 0.5, reasons=["structure"]),
+                "structure",
+            )
+            for chunk in structural
+            if chunk.chunk_id not in matched_ids
+        )
 
         selected: list[SelectedContextChunk] = []
         seen: set[str] = set()

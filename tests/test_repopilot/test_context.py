@@ -67,3 +67,16 @@ def test_context_builder_uses_hybrid_retrieval_when_enabled(tmp_path: Path, monk
     )
 
     assert "semantic" in selection.selected_chunks[0].reason
+
+
+def test_context_builder_includes_structural_neighbors(tmp_path: Path) -> None:
+    (tmp_path / "service.py").write_text(
+        "def helper(value):\n return value\n\ndef target(value):\n return helper(value)\n",
+        encoding="utf-8",
+    )
+    selection = ContextBuilder(char_budget=2000, top_k=1).build(
+        index=RepositoryIndex.build(tmp_path), query="target"
+    )
+
+    assert {item.chunk.symbol for item in selection.selected_chunks} >= {"target", "helper"}
+    assert any("structure" in item.reason for item in selection.selected_chunks)

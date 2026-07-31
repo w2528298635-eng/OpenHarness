@@ -6,6 +6,8 @@ verify_command: [python, -m, pytest, -q, test_discount.py]
 allowed_paths: [discount.py]
 retrieval:
   enabled: true
+  strategy: hybrid
+  structural_expansion: true
   context_char_budget: 6000
 budgets:
   max_phase_calls: 8

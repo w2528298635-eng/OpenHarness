@@ -10,6 +10,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from .query_planner import QueryPlanner
+
 _TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|\d+|[\u4e00-\u9fff]+")
 _IGNORED_DIRECTORIES = frozenset(
     {
@@ -101,7 +103,8 @@ class RepositoryIndex(BaseModel):
         return cls(root=resolved, chunks=chunks)
 
     def search(self, query: RetrievalQuery) -> RetrievalResult:
-        query_terms = _tokens(query.text)
+        plan = QueryPlanner().plan(query.text)
+        query_terms = _tokens(" ".join(plan.queries))
         if not query_terms or not self.chunks:
             return RetrievalResult(
                 query=query,
@@ -158,6 +161,37 @@ class RepositoryIndex(BaseModel):
         """Fuse lexical relevance with locally computed cosine similarity."""
         lexical = self.search(RetrievalQuery(text=query.text, top_k=100))
         candidates = lexical.matches
+        if hasattr(encoder, "rank"):
+            dense = encoder.rank(query.text, self.chunks, top_k=100)
+            lexical_scores = {item.chunk.chunk_id: item.score for item in candidates}
+            maximum_lexical = max(lexical_scores.values(), default=1.0)
+            dense_scores = {
+                self.chunks[index].chunk_id: score for index, score in dense
+            }
+            merged_ids = set(lexical_scores) | set(dense_scores)
+            by_id = {chunk.chunk_id: chunk for chunk in self.chunks}
+            scored = []
+            for chunk_id in merged_ids:
+                lexical_score = lexical_scores.get(chunk_id, 0.0) / maximum_lexical
+                dense_score = max(0.0, dense_scores.get(chunk_id, 0.0))
+                reasons = []
+                if chunk_id in lexical_scores:
+                    reasons.append("lexical")
+                if chunk_id in dense_scores:
+                    reasons.append("dense")
+                scored.append(
+                    ScoredChunk(
+                        chunk=by_id[chunk_id],
+                        score=round(lexical_score * 0.45 + dense_score * 0.55, 6),
+                        reasons=reasons,
+                    )
+                )
+            scored.sort(key=lambda item: (-item.score, item.chunk.path, item.chunk.start_line))
+            return RetrievalResult(
+                query=query,
+                matches=scored[: query.top_k],
+                indexed_chunks=len(self.chunks),
+            )
         query_vector, *chunk_vectors = encoder(
             [query.text, *(f"{item.chunk.path} {item.chunk.symbol} {item.chunk.text}" for item in candidates)]
         )
@@ -180,6 +214,29 @@ class RepositoryIndex(BaseModel):
                 scored.append(ScoredChunk(chunk=chunk, score=round(score, 6), reasons=reasons))
         scored.sort(key=lambda item: (-item.score, item.chunk.path, item.chunk.start_line))
         return RetrievalResult(query=query, matches=scored[: query.top_k], indexed_chunks=len(self.chunks))
+
+    def expand_structure(self, seeds: list[CodeChunk], *, limit: int = 12) -> list[CodeChunk]:
+        """Add same-file definitions and chunks that reference seed symbols."""
+        ordered: list[CodeChunk] = []
+        seen: set[str] = set()
+
+        def add(chunk: CodeChunk) -> None:
+            if chunk.chunk_id not in seen and len(ordered) < limit:
+                seen.add(chunk.chunk_id)
+                ordered.append(chunk)
+
+        for seed in seeds:
+            add(seed)
+        for seed in seeds:
+            for chunk in self.chunks:
+                if chunk.path == seed.path:
+                    add(chunk)
+            if seed.symbol:
+                symbol = re.compile(rf"\b{re.escape(seed.symbol)}\b")
+                for chunk in self.chunks:
+                    if chunk.chunk_id != seed.chunk_id and symbol.search(chunk.text):
+                        add(chunk)
+        return ordered
 
 
 def _chunk_file(path: str, text: str, *, max_chunk_chars: int) -> list[CodeChunk]:
