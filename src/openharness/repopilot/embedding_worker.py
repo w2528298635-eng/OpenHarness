@@ -12,7 +12,12 @@ def main() -> None:
 
     payload = json.load(sys.stdin)
     cache_file = Path(payload["cache_file"])
-    model = SentenceTransformer(payload["model"], cache_folder=payload["model_cache"])
+    model = SentenceTransformer(
+        payload["model"],
+        revision=payload.get("revision"),
+        cache_folder=payload["model_cache"],
+        trust_remote_code=bool(payload.get("trust_remote_code", False)),
+    )
     model.max_seq_length = int(payload["max_seq_length"])
     texts = payload["texts"]
     chunk_ids = payload["chunk_ids"]
@@ -86,10 +91,10 @@ def main() -> None:
         cache_misses = len(missing)
         generated = model.encode(
             [texts[index] for index in missing],
-            batch_size=64,
+            batch_size=int(payload.get("batch_size", 32)),
             normalize_embeddings=True,
             show_progress_bar=False,
-        ) if missing else np.empty((0, 384), dtype=np.float32)
+        ) if missing else []
         generated_by_index = dict(zip(missing, generated, strict=True))
         embeddings = np.stack(
             [
@@ -106,7 +111,7 @@ def main() -> None:
     queries = payload.get("queries", [payload["query"]])
     query_vectors = model.encode(
         [
-            "Represent this sentence for searching relevant passages: " + query
+            payload.get("query_prefix", "") + query
             for query in queries
         ],
         normalize_embeddings=True,
