@@ -86,6 +86,50 @@ def test_context_builder_includes_structural_neighbors(tmp_path: Path) -> None:
     assert any("structure" in item.reason for item in selection.selected_chunks)
 
 
+def test_context_builder_reranks_only_fused_candidates_before_top_k(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from openharness.repopilot import context as context_module
+
+    (tmp_path / "first.py").write_text(
+        "def generic_mask():\n return 'mask mask mask'\n", encoding="utf-8"
+    )
+    (tmp_path / "target.py").write_text(
+        "def combine_masks(left, right):\n return left | right\n", encoding="utf-8"
+    )
+    captured = {}
+
+    class FakeEncoder:
+        def rank_many(self, _queries, chunks, *, top_k):
+            assert top_k == 100
+            return [(index, 0.9 - index * 0.1) for index, _chunk in enumerate(chunks)]
+
+    class FakeReranker:
+        def rank(self, query, candidates, *, top_k):
+            captured["query"] = query
+            captured["candidate_ids"] = [chunk.chunk_id for chunk in candidates]
+            captured["top_k"] = top_k
+            return [(1, 8.5)]
+
+    monkeypatch.setattr(context_module, "LocalEmbeddingEncoder", FakeEncoder)
+    monkeypatch.setattr(context_module, "LocalCrossEncoderReranker", FakeReranker)
+    selection = ContextBuilder(
+        char_budget=500,
+        top_k=1,
+        retrieval_strategy="hybrid",
+        reranker="cross_encoder",
+        reranker_candidate_k=40,
+    ).build(
+        index=RepositoryIndex.build(tmp_path),
+        query="mask propagation fails for None",
+    )
+
+    assert len(captured["candidate_ids"]) == 2
+    assert captured["top_k"] == 1
+    assert selection.selected_chunks[0].chunk.path == "target.py"
+    assert "reranker" in selection.selected_chunks[0].reason
+
+
 def test_context_builder_allows_query_planner_ablation(tmp_path: Path, monkeypatch) -> None:
     from openharness.repopilot.query_planner import QueryPlanner
 

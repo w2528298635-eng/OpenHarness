@@ -36,6 +36,9 @@ class LocalizationRunConfig(BaseModel):
     retrieval_strategy: Literal["lexical", "hybrid"] = "lexical"
     query_planning: bool = True
     structural_expansion: bool = False
+    reranker: Literal["none", "cross_encoder"] = "none"
+    reranker_candidate_k: int = Field(default=40, ge=1, le=100)
+    reranker_strict: bool = True
     char_budget: int = Field(default=12_000, ge=100)
     top_k: int = Field(default=12, ge=1, le=100)
 
@@ -97,6 +100,9 @@ def evaluate_localization_instance(
     retrieval_strategy: Literal["lexical", "hybrid"] = "lexical",
     query_planning: bool = True,
     structural_expansion: bool = False,
+    reranker: Literal["none", "cross_encoder"] = "none",
+    reranker_candidate_k: int = 40,
+    reranker_strict: bool = True,
 ) -> LocalizationRecord:
     """Score a task after retrieval output is generated and checkpoint it atomically."""
     checkpoint = store.load()
@@ -104,6 +110,9 @@ def evaluate_localization_instance(
         retrieval_strategy=retrieval_strategy,
         query_planning=query_planning,
         structural_expansion=structural_expansion,
+        reranker=reranker,
+        reranker_candidate_k=reranker_candidate_k,
+        reranker_strict=reranker_strict,
         char_budget=char_budget,
         top_k=top_k,
     )
@@ -133,6 +142,9 @@ def evaluate_localization_instance(
         retrieval_strategy=retrieval_strategy,
         query_planning=query_planning,
         structural_expansion=structural_expansion,
+        reranker=reranker,
+        reranker_candidate_k=reranker_candidate_k,
+        reranker_strict=reranker_strict,
     ).build(
         index=index,
         query=instance.problem_statement,
@@ -176,6 +188,9 @@ def evaluate_localization_manifest(
     retrieval_strategy: Literal["lexical", "hybrid"] = "lexical",
     query_planning: bool = True,
     structural_expansion: bool = False,
+    reranker: Literal["none", "cross_encoder"] = "none",
+    reranker_candidate_k: int = 40,
+    reranker_strict: bool = True,
 ) -> LocalizationCheckpoint:
     """Evaluate a frozen public manifest; gold patches are consumed only here."""
     patches: dict[str, str] = {}
@@ -197,5 +212,8 @@ def evaluate_localization_manifest(
             retrieval_strategy=retrieval_strategy,
             query_planning=query_planning,
             structural_expansion=structural_expansion,
+            reranker=reranker,
+            reranker_candidate_k=reranker_candidate_k,
+            reranker_strict=reranker_strict,
         )
     return store.load()

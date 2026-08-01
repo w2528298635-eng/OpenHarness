@@ -28,6 +28,23 @@ def test_structural_expansion_is_opt_in_by_default() -> None:
     assert RetrievalConfig().structural_expansion is False
 
 
+def test_cross_encoder_reranker_is_explicit_and_bounded() -> None:
+    default = RetrievalConfig()
+
+    assert default.reranker == "none"
+    assert default.reranker_candidate_k == 40
+    configured = RetrievalConfig(
+        reranker="cross_encoder",
+        reranker_candidate_k=60,
+        reranker_strict=True,
+    )
+    assert configured.reranker == "cross_encoder"
+    assert configured.reranker_strict is True
+
+    with pytest.raises(ValidationError):
+        RetrievalConfig(reranker_candidate_k=101)
+
+
 def test_run_state_round_trips_json(tmp_path: Path) -> None:
     task = RepoTaskSpec(repo_path=tmp_path, issue="broken", verify_command=["pytest"])
     state = RepoRunState(run_id="run-1", task=task, phase=Phase.PRECHECK)

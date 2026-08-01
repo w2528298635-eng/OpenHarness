@@ -331,6 +331,9 @@ class RepoPilotScheduler:
             retrieval_strategy=config.strategy,
             query_planning=config.query_planning,
             structural_expansion=config.structural_expansion,
+            reranker=config.reranker,
+            reranker_candidate_k=config.reranker_candidate_k,
+            reranker_strict=config.reranker_strict,
         ).build(
             index=index,
             query=" ".join(

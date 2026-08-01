@@ -57,6 +57,9 @@ class RetrievalConfig(BaseModel):
     strategy: Literal["lexical", "hybrid"] = "lexical"
     query_planning: bool = True
     structural_expansion: bool = False
+    reranker: Literal["none", "cross_encoder"] = "none"
+    reranker_candidate_k: int = Field(default=40, ge=1, le=100)
+    reranker_strict: bool = False
     max_file_bytes: int = Field(default=200_000, ge=1024)
     max_chunk_chars: int = Field(default=4000, ge=200)
     context_char_budget: int = Field(default=12_000, ge=500)

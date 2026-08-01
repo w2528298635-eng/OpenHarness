@@ -175,3 +175,20 @@ def test_localization_evaluator_rejects_empty_repository(tmp_path: Path) -> None
             ),
             store=LocalizationCheckpointStore(tmp_path / "empty.json"),
         )
+
+
+def test_localization_run_configuration_tracks_reranker_ablation() -> None:
+    from openharness.repopilot.swebench.localization_execution import (
+        LocalizationRunConfig,
+    )
+
+    configuration = LocalizationRunConfig(
+        retrieval_strategy="hybrid",
+        reranker="cross_encoder",
+        reranker_candidate_k=40,
+        reranker_strict=True,
+    )
+
+    assert configuration.reranker == "cross_encoder"
+    assert configuration.reranker_candidate_k == 40
+    assert configuration.reranker_strict is True

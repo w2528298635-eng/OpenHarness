@@ -386,6 +386,14 @@ def localize_command(
         bool,
         typer.Option("--structural-expansion/--no-structural-expansion"),
     ] = False,
+    reranker: Annotated[str, typer.Option("--reranker")] = "none",
+    reranker_candidate_k: Annotated[
+        int, typer.Option("--reranker-candidate-k", min=1, max=100)
+    ] = 40,
+    reranker_strict: Annotated[
+        bool,
+        typer.Option("--reranker-strict/--reranker-fallback"),
+    ] = True,
     char_budget: Annotated[int, typer.Option("--char-budget", min=100)] = 12_000,
     top_k: Annotated[int, typer.Option("--top-k", min=1, max=100)] = 12,
 ) -> None:
@@ -394,6 +402,11 @@ def localize_command(
         raise typer.BadParameter(
             "strategy must be lexical or hybrid",
             param_hint="strategy",
+        )
+    if reranker not in {"none", "cross_encoder"}:
+        raise typer.BadParameter(
+            "reranker must be none or cross_encoder",
+            param_hint="reranker",
         )
     selected = SampleManifest.model_validate_json(manifest.read_text(encoding="utf-8"))
     state = evaluate_localization_manifest(
@@ -409,6 +422,9 @@ def localize_command(
         retrieval_strategy=strategy,
         query_planning=query_planning,
         structural_expansion=structural_expansion,
+        reranker=reranker,
+        reranker_candidate_k=reranker_candidate_k,
+        reranker_strict=reranker_strict,
     )
     typer.echo(f"checkpoint: {checkpoint.resolve()}")
     typer.echo(f"completed: {len(state.records)}")

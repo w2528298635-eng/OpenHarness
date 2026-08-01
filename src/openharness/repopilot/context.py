@@ -5,6 +5,7 @@ import os
 from pydantic import BaseModel, Field
 
 from .embedding import LocalEmbeddingEncoder
+from .reranker import LocalCrossEncoderReranker
 from .retrieval import CodeChunk, RepositoryIndex, RetrievalQuery, ScoredChunk
 
 
@@ -31,6 +32,9 @@ class ContextBuilder:
         retrieval_strategy: str = "lexical",
         query_planning: bool = True,
         structural_expansion: bool = False,
+        reranker: str = "none",
+        reranker_candidate_k: int = 40,
+        reranker_strict: bool = False,
     ):
         if char_budget < 100:
             raise ValueError("context char budget must be at least 100")
@@ -39,6 +43,9 @@ class ContextBuilder:
         self.retrieval_strategy = retrieval_strategy
         self.query_planning = query_planning
         self.structural_expansion = structural_expansion
+        self.reranker = reranker
+        self.reranker_candidate_k = reranker_candidate_k
+        self.reranker_strict = reranker_strict
 
     def build(
         self,
@@ -80,8 +87,13 @@ class ContextBuilder:
             and os.environ.get("REPOPILOT_QUERY_PLANNING", "1") != "0"
         )
         if hybrid_enabled:
+            retrieval_top_k = (
+                max(self.top_k, self.reranker_candidate_k)
+                if self.reranker == "cross_encoder"
+                else self.top_k
+            )
             result = index.hybrid_search(
-                RetrievalQuery(text=query, top_k=self.top_k),
+                RetrievalQuery(text=query, top_k=retrieval_top_k),
                 encoder=LocalEmbeddingEncoder(),
                 query_planning=query_planning_enabled,
             )
@@ -90,6 +102,26 @@ class ContextBuilder:
                 RetrievalQuery(text=query, top_k=self.top_k),
                 query_planning=query_planning_enabled,
             )
+        if self.reranker == "cross_encoder" and result.matches:
+            try:
+                reranked = LocalCrossEncoderReranker().rank(
+                    query,
+                    [match.chunk for match in result.matches],
+                    top_k=self.top_k,
+                )
+            except RuntimeError:
+                if self.reranker_strict:
+                    raise
+            else:
+                original = result.matches
+                result.matches = [
+                    ScoredChunk(
+                        chunk=original[index].chunk,
+                        score=score,
+                        reasons=[*original[index].reasons, "reranker"],
+                    )
+                    for index, score in reranked
+                ]
         retrieval_candidates = [
             (match, "+".join(match.reasons) or "lexical")
             for match in result.matches
