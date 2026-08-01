@@ -6,6 +6,30 @@ import sys
 from pathlib import Path
 
 
+def _encode_missing_in_batches(
+    *,
+    missing,
+    texts,
+    embedding_ids,
+    model,
+    batch_size: int,
+    persist,
+):
+    """Encode and durably persist each batch so an interrupted run can resume."""
+    generated = {}
+    for start in range(0, len(missing), batch_size):
+        batch_indices = missing[start : start + batch_size]
+        values = model.encode(
+            [texts[index] for index in batch_indices],
+            batch_size=batch_size,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+        persist([embedding_ids[index] for index in batch_indices], values)
+        generated.update(zip(batch_indices, values, strict=True))
+    return generated
+
+
 def main() -> None:
     import numpy as np
     from sentence_transformers import SentenceTransformer
@@ -89,13 +113,14 @@ def main() -> None:
         ]
         cache_hits = len(embedding_ids) - len(missing)
         cache_misses = len(missing)
-        generated = model.encode(
-            [texts[index] for index in missing],
+        generated_by_index = _encode_missing_in_batches(
+            missing=missing,
+            texts=texts,
+            embedding_ids=embedding_ids,
+            model=model,
             batch_size=int(payload.get("batch_size", 32)),
-            normalize_embeddings=True,
-            show_progress_bar=False,
-        ) if missing else []
-        generated_by_index = dict(zip(missing, generated, strict=True))
+            persist=persist,
+        )
         embeddings = np.stack(
             [
                 cached[embedding_id]
@@ -104,7 +129,6 @@ def main() -> None:
                 for index, embedding_id in enumerate(embedding_ids)
             ]
         )
-        persist(embedding_ids, embeddings)
         temporary = cache_file.with_suffix(".tmp.npy")
         np.save(temporary, embeddings)
         temporary.replace(cache_file)

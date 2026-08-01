@@ -66,7 +66,7 @@ class LocalEmbeddingEncoder:
             text=True,
             capture_output=True,
             check=True,
-            timeout=1800,
+            timeout=7200,
             env={**os.environ, "HF_HUB_CACHE": self.cache},
         )
         return json.loads(completed.stdout)
