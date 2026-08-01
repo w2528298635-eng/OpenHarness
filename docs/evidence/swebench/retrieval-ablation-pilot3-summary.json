@@ -1,0 +1,58 @@
+{
+  "status": "development_ablation",
+  "sample_size": 3,
+  "dataset": "SWE-bench/SWE-bench_Verified",
+  "sample_manifest": "pilot-manifest.json",
+  "warning": "This three-task ablation is diagnostic only and is not statistically significant.",
+  "common_configuration": {
+    "char_budget": 12000,
+    "top_k": 12
+  },
+  "results": {
+    "lexical": {
+      "query_planning": false,
+      "structural_expansion": false,
+      "recall_at_5": 0.333333,
+      "hit_at_5": 0.333333,
+      "mrr": 0.333333,
+      "irrelevant_context_rate": 0.88873,
+      "mean_retrieval_seconds": 6.666737
+    },
+    "lexical_planned": {
+      "query_planning": true,
+      "structural_expansion": false,
+      "recall_at_5": 0.333333,
+      "hit_at_5": 0.333333,
+      "mrr": 0.333333,
+      "irrelevant_context_rate": 0.88873,
+      "mean_retrieval_seconds": 7.041309
+    },
+    "dual": {
+      "query_planning": false,
+      "structural_expansion": false,
+      "recall_at_5": 0.666667,
+      "hit_at_5": 0.666667,
+      "mrr": 0.444444,
+      "irrelevant_context_rate": 0.819551,
+      "mean_retrieval_seconds": 33.783957
+    },
+    "dual_planned": {
+      "query_planning": true,
+      "structural_expansion": false,
+      "recall_at_5": 0.666667,
+      "hit_at_5": 0.666667,
+      "mrr": 0.5,
+      "irrelevant_context_rate": 0.814752,
+      "mean_retrieval_seconds": 29.361893
+    },
+    "dual_planned_structural": {
+      "query_planning": true,
+      "structural_expansion": true,
+      "recall_at_5": 0.666667,
+      "hit_at_5": 0.666667,
+      "mrr": 0.444444,
+      "irrelevant_context_rate": 0.82965,
+      "mean_retrieval_seconds": 32.892166
+    }
+  }
+}

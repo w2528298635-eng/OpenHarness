@@ -97,7 +97,7 @@ retrieval:
   enabled: true
   strategy: hybrid
   query_planning: true
-  structural_expansion: true
+  structural_expansion: false
   max_file_bytes: 200000
   max_chunk_chars: 4000
   context_char_budget: 12000
@@ -145,7 +145,7 @@ AST 顶层类/函数切块，其他文本按大小切块。`QueryPlanner` 从问
 取 top-100。两路分数归一化后按 `0.45 / 0.55` 融合，因此语义通道可以召回完全不在
 关键词候选集中的代码。
 
-融合结果随后按代码结构扩展：补入同文件定义，以及引用种子符号的其他片段。
+可选的结构扩展会在融合结果后补入同文件相关定义，以及引用种子符号的其他片段。
 `ContextBuilder` 再优先放入验证失败、已怀疑文件和高分片段，按字符预算截断，并保存
 路径、行号、分数和选择原因。向量缓存在 E 盘 SQLite 中，后续相同代码片段无需重复
 编码。若没有安装本地 embedding 环境，可以把 `strategy` 改回 `lexical`。
@@ -154,13 +154,15 @@ AST 顶层类/函数切块，其他文本按大小切块。`QueryPlanner` 从问
 三个检索结果再插入一个。同文件候选必须与种子存在调用关系，跨文件候选必须引用
 种子符号，不会仅因物理位置接近就加入。这样即使 12k 字符预算只容纳少量代码块，
 调用方或被调用定义仍有机会真正进入 Prompt，而不是“代码找到了、预算却永远轮不到它”。
+不过三题消融中结构扩展没有提高 Recall@5，并把 MRR 从 0.500 降到 0.444，因此该功能
+保留为实验开关、默认关闭；这避免把“看起来更复杂”误当成“实测更有效”。
 
 为了做公平消融，同一套代码支持以下环境开关：
 
 ```powershell
 $env:REPOPILOT_HYBRID_RETRIEVAL = "1"      # 开启独立语义召回
 $env:REPOPILOT_QUERY_PLANNING = "0"        # 关闭 Query Planner
-$env:REPOPILOT_STRUCTURAL_EXPANSION = "0"  # 关闭结构扩展
+$env:REPOPILOT_STRUCTURAL_EXPANSION = "1"  # 实验性开启结构扩展
 ```
 
 正式评测建议使用可恢复 CLI，而不是环境变量。每个实验臂必须使用不同 checkpoint；
@@ -173,14 +175,14 @@ openh repopilot swebench localize docs\evidence\swebench\pilot-manifest.json `
   --strategy lexical --no-query-planning --no-structural-expansion
 
 openh repopilot swebench localize docs\evidence\swebench\pilot-manifest.json `
-  --checkpoint .openharness-swebench\dual-planned-structural-pilot3.json `
+  --checkpoint .openharness-swebench\dual-planned-pilot3.json `
   --repository-root C:\path\to\prepared\worktrees `
-  --strategy hybrid --query-planning --structural-expansion
+  --strategy hybrid --query-planning --no-structural-expansion
 
 openh repopilot swebench localization-report `
-  .openharness-swebench\dual-planned-structural-pilot3.json `
+  .openharness-swebench\dual-planned-pilot3.json `
   docs\evidence\swebench\pilot-manifest.json `
-  --output .openharness-swebench\dual-planned-structural-pilot3-summary.json
+  --output .openharness-swebench\dual-planned-pilot3-summary.json
 ```
 
 Embedding 缓存按实际编码文本的 SHA-256 寻址，而不是按会随行号变化的 chunk ID
@@ -188,9 +190,9 @@ Embedding 缓存按实际编码文本的 SHA-256 寻址，而不是按会随行�
 查询会在一次 worker 调用中共同编码，并以各查询相似度的最大值形成语义排序，避免
 重复加载模型。
 
-三题开发集的组合结果从 Recall@5 33.33% 提升到 66.67%，MRR 从 0.333 提升到
-0.444；样本很小，只能作为诊断证据，不能外推成整体成功率。详见
-[三题双路检索记录](evidence/swebench/dual-retrieval-pilot3.md)。
+三题开发集的推荐组合把 Recall@5 从 33.33% 提升到 66.67%，MRR 从 0.333 提升到
+0.500；样本很小，只能作为组件消融证据，不能外推成整体成功率。详见
+[三题组件消融记录](evidence/swebench/retrieval-ablation-pilot3.md)。
 
 ## 评测、API 和第二工作流
 
