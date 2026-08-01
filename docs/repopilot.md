@@ -194,6 +194,11 @@ Embedding 缓存按实际编码文本的 SHA-256 寻址，而不是按会随行�
 0.500；样本很小，只能作为组件消融证据，不能外推成整体成功率。详见
 [三题组件消融记录](evidence/swebench/retrieval-ablation-pilot3.md)。
 
+在冻结的 45 题开发评测中，推荐组合相对词法基线把 Recall@5 从 15.56% 提升到
+28.89%，Hit@5 从 15.56% 提升到 33.33%，MRR 从 0.133 提升到 0.239；无关上下文率
+从 89.69% 降到 85.12%。这是文件定位指标，不是端到端修复成功率，也不是官方
+SWE-bench resolved rate。详见 [45 题定位报告](evidence/swebench/planned-dual-45.md)。
+
 ## 评测、API 和第二工作流
 
 ```powershell
