@@ -74,7 +74,11 @@ def test_context_builder_includes_structural_neighbors(tmp_path: Path) -> None:
         "def helper(value):\n return value\n\ndef target(value):\n return helper(value)\n",
         encoding="utf-8",
     )
-    selection = ContextBuilder(char_budget=2000, top_k=1).build(
+    selection = ContextBuilder(
+        char_budget=2000,
+        top_k=1,
+        structural_expansion=True,
+    ).build(
         index=RepositoryIndex.build(tmp_path), query="target"
     )
 
@@ -115,7 +119,11 @@ def test_context_builder_reserves_tight_budget_for_structural_neighbor(
         encoding="utf-8",
     )
 
-    selection = ContextBuilder(char_budget=180, top_k=2).build(
+    selection = ContextBuilder(
+        char_budget=180,
+        top_k=2,
+        structural_expansion=True,
+    ).build(
         index=RepositoryIndex.build(tmp_path),
         query="target",
     )

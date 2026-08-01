@@ -30,7 +30,7 @@ class ContextBuilder:
         top_k: int = 12,
         retrieval_strategy: str = "lexical",
         query_planning: bool = True,
-        structural_expansion: bool = True,
+        structural_expansion: bool = False,
     ):
         if char_budget < 100:
             raise ValueError("context char budget must be at least 100")

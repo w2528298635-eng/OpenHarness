@@ -385,7 +385,7 @@ def localize_command(
     structural_expansion: Annotated[
         bool,
         typer.Option("--structural-expansion/--no-structural-expansion"),
-    ] = True,
+    ] = False,
     char_budget: Annotated[int, typer.Option("--char-budget", min=100)] = 12_000,
     top_k: Annotated[int, typer.Option("--top-k", min=1, max=100)] = 12,
 ) -> None:

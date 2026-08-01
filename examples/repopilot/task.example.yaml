@@ -8,7 +8,7 @@ retrieval:
   enabled: true
   strategy: hybrid
   query_planning: true
-  structural_expansion: true
+  structural_expansion: false
   context_char_budget: 6000
 budgets:
   max_phase_calls: 8

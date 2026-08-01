@@ -35,7 +35,7 @@ class LocalizationRunConfig(BaseModel):
 
     retrieval_strategy: Literal["lexical", "hybrid"] = "lexical"
     query_planning: bool = True
-    structural_expansion: bool = True
+    structural_expansion: bool = False
     char_budget: int = Field(default=12_000, ge=100)
     top_k: int = Field(default=12, ge=1, le=100)
 
@@ -96,7 +96,7 @@ def evaluate_localization_instance(
     top_k: int = 12,
     retrieval_strategy: Literal["lexical", "hybrid"] = "lexical",
     query_planning: bool = True,
-    structural_expansion: bool = True,
+    structural_expansion: bool = False,
 ) -> LocalizationRecord:
     """Score a task after retrieval output is generated and checkpoint it atomically."""
     checkpoint = store.load()
@@ -175,7 +175,7 @@ def evaluate_localization_manifest(
     top_k: int = 12,
     retrieval_strategy: Literal["lexical", "hybrid"] = "lexical",
     query_planning: bool = True,
-    structural_expansion: bool = True,
+    structural_expansion: bool = False,
 ) -> LocalizationCheckpoint:
     """Evaluate a frozen public manifest; gold patches are consumed only here."""
     patches: dict[str, str] = {}
