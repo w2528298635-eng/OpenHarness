@@ -101,6 +101,7 @@ class LocalCrossEncoderReranker:
             capture_output=True,
             check=False,
             timeout=1800,
+            env={**os.environ, "HF_HUB_CACHE": self.model_cache},
         )
         if getattr(completed, "returncode", 0):
             detail = completed.stderr.strip() or "worker returned no stderr"

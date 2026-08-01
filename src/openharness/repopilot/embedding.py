@@ -67,6 +67,7 @@ class LocalEmbeddingEncoder:
             capture_output=True,
             check=True,
             timeout=1800,
+            env={**os.environ, "HF_HUB_CACHE": self.cache},
         )
         return json.loads(completed.stdout)
 
@@ -127,6 +128,7 @@ class LocalEmbeddingEncoder:
             capture_output=True,
             check=False,
             timeout=1800,
+            env={**os.environ, "HF_HUB_CACHE": self.cache},
         )
         if getattr(completed, "returncode", 0):
             detail = completed.stderr.strip() or "worker returned no stderr"

@@ -13,6 +13,7 @@ def test_local_encoder_rank_uses_independent_dense_worker_and_stable_cache(
 
     def fake_run(argv, **kwargs):
         captured["argv"] = argv
+        captured["kwargs"] = kwargs
         captured["payload"] = json.loads(kwargs["input"])
         return SimpleNamespace(
             stdout='{"ranked": [[1, 0.91]], "cache_hits": 1, "cache_misses": 1}'
@@ -50,6 +51,7 @@ def test_local_encoder_rank_uses_independent_dense_worker_and_stable_cache(
     assert "legacy_model_key" not in captured["payload"]
     assert captured["payload"]["vector_store"].endswith("embeddings-v2.sqlite3")
     assert str(tmp_path) in captured["payload"]["cache_file"]
+    assert captured["kwargs"]["env"]["HF_HUB_CACHE"] == encoder.cache
 
 
 def test_local_encoder_keeps_model_configurations_in_separate_caches(
