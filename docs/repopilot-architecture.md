@@ -17,7 +17,7 @@ flowchart TB
     Runtime["WorkflowRuntime"]
     Scheduler["Repair handlers / TransitionPolicy"]
     Verify["CompositeVerifier / FailurePolicy"]
-    Context["RepositoryIndex / ContextBuilder"]
+    Context["RepositoryIndex / CodeRankEmbed / CrossEncoder / ContextBuilder"]
     Store["RunStore / typed events / summary"]
     Workspace["Git worktree lifecycle"]
   end
@@ -45,6 +45,11 @@ flowchart TB
 OpenHarness 负责通用 Agent 能力；RepoPilot 新增领域工作流、恢复政策、验证、
 检索、worktree、持久化、评测和应用适配层。没有重写 QueryEngine、provider client
 或 ToolRegistry。
+
+检索层先让词法通道和 CodeRankEmbed 语义通道分别召回，再用归一化加权产生候选集。
+Cross-Encoder 只重排候选集内代码块；其分数与候选生成分数再次归一化加权，避免单个
+精排误判覆盖前级证据。模型名、不可变 revision、最大长度、候选数和融合权重都进入
+任务配置与评测检查点，恢复运行时若配置不同会直接拒绝混写。
 
 ## 修复时序
 
@@ -106,7 +111,7 @@ sequenceDiagram
 | OpenHarness 模型阶段 | `src/openharness/repopilot/phase_runner.py` |
 | 阶段工具边界 | `src/openharness/repopilot/tools.py` |
 | 验证与失败恢复 | `verification.py`、`failures.py`、`policy.py` |
-| 检索与上下文 | `retrieval.py`、`context.py` |
+| 检索与上下文 | `retrieval.py`、`embedding.py`、`reranker.py`、`context.py` |
 | 事件、状态与汇总 | `events.py`、`store.py`、`usage.py` |
 | Git worktree | `workspace.py` |
 | CLI / API | `cli.py`、`service.py`、`api.py` |

@@ -44,8 +44,8 @@ class LocalEmbeddingEncoder:
         self.index_cache = cache_directory or Path(
             os.environ.get("REPOPILOT_EMBEDDING_INDEX_CACHE", r"E:\RepoPilot\models\repopilot-index")
         )
-        self.model = os.environ.get("REPOPILOT_EMBEDDING_MODEL", model)
-        self.revision = os.environ.get("REPOPILOT_EMBEDDING_REVISION", revision)
+        self.model = model
+        self.revision = revision
         self.query_prefix = os.environ.get("REPOPILOT_EMBEDDING_QUERY_PREFIX", query_prefix)
         self.max_seq_length = max_seq_length
         self.last_stats: dict[str, int] = {}

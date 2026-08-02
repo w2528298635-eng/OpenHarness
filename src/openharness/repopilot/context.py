@@ -4,8 +4,19 @@ import os
 
 from pydantic import BaseModel, Field
 
-from .embedding import LocalEmbeddingEncoder
-from .reranker import LocalCrossEncoderReranker
+from .embedding import (
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_EMBEDDING_REVISION,
+    DEFAULT_MAX_SEQ_LENGTH,
+    LocalEmbeddingEncoder,
+)
+from .reranker import (
+    DEFAULT_RERANKER_MAX_LENGTH,
+    DEFAULT_RERANKER_MODEL,
+    DEFAULT_RERANKER_REVISION,
+    LocalCrossEncoderReranker,
+    blend_rankings,
+)
 from .retrieval import CodeChunk, RepositoryIndex, RetrievalQuery, ScoredChunk
 
 
@@ -32,8 +43,15 @@ class ContextBuilder:
         retrieval_strategy: str = "lexical",
         query_planning: bool = True,
         structural_expansion: bool = False,
+        embedding_model: str = DEFAULT_EMBEDDING_MODEL,
+        embedding_revision: str = DEFAULT_EMBEDDING_REVISION,
+        embedding_max_seq_length: int = DEFAULT_MAX_SEQ_LENGTH,
         reranker: str = "none",
+        reranker_model: str = DEFAULT_RERANKER_MODEL,
+        reranker_revision: str = DEFAULT_RERANKER_REVISION,
+        reranker_max_length: int = DEFAULT_RERANKER_MAX_LENGTH,
         reranker_candidate_k: int = 40,
+        reranker_weight: float = 0.5,
         reranker_strict: bool = False,
     ):
         if char_budget < 100:
@@ -43,8 +61,15 @@ class ContextBuilder:
         self.retrieval_strategy = retrieval_strategy
         self.query_planning = query_planning
         self.structural_expansion = structural_expansion
+        self.embedding_model = embedding_model
+        self.embedding_revision = embedding_revision
+        self.embedding_max_seq_length = embedding_max_seq_length
         self.reranker = reranker
+        self.reranker_model = reranker_model
+        self.reranker_revision = reranker_revision
+        self.reranker_max_length = reranker_max_length
         self.reranker_candidate_k = reranker_candidate_k
+        self.reranker_weight = reranker_weight
         self.reranker_strict = reranker_strict
 
     def build(
@@ -94,7 +119,11 @@ class ContextBuilder:
             )
             result = index.hybrid_search(
                 RetrievalQuery(text=query, top_k=retrieval_top_k),
-                encoder=LocalEmbeddingEncoder(),
+                encoder=LocalEmbeddingEncoder(
+                    model=self.embedding_model,
+                    revision=self.embedding_revision,
+                    max_seq_length=self.embedding_max_seq_length,
+                ),
                 query_planning=query_planning_enabled,
             )
         else:
@@ -104,16 +133,26 @@ class ContextBuilder:
             )
         if self.reranker == "cross_encoder" and result.matches:
             try:
-                reranked = LocalCrossEncoderReranker().rank(
+                reranked = LocalCrossEncoderReranker(
+                    model=self.reranker_model,
+                    revision=self.reranker_revision,
+                    max_length=self.reranker_max_length,
+                ).rank(
                     query,
                     [match.chunk for match in result.matches],
-                    top_k=self.top_k,
+                    top_k=len(result.matches),
                 )
             except RuntimeError:
                 if self.reranker_strict:
                     raise
             else:
                 original = result.matches
+                reranked = blend_rankings(
+                    base_scores=[match.score for match in original],
+                    reranked=reranked,
+                    reranker_weight=self.reranker_weight,
+                    top_k=self.top_k,
+                )
                 result.matches = [
                     ScoredChunk(
                         chunk=original[index].chunk,

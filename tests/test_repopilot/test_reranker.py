@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from openharness.repopilot.reranker import LocalCrossEncoderReranker
+from openharness.repopilot.reranker import LocalCrossEncoderReranker, blend_rankings
 from openharness.repopilot.retrieval import CodeChunk
 
 
@@ -134,3 +134,32 @@ def test_cross_encoder_surfaces_worker_failure(tmp_path: Path, monkeypatch) -> N
         assert "model load failed" in str(error)
     else:
         raise AssertionError("worker failure should have been surfaced")
+
+
+def test_blended_ranking_normalizes_both_signals_before_weighting() -> None:
+    """A marginal reranker disagreement must not erase a strong fused lead."""
+    ranked = blend_rankings(
+        base_scores=[0.9, 0.8, 0.1],
+        reranked=[(1, 8.0), (0, 7.0), (2, -3.0)],
+        reranker_weight=0.5,
+        top_k=2,
+    )
+
+    assert [index for index, _score in ranked] == [0, 1]
+    assert ranked[0][1] > ranked[1][1]
+
+
+def test_explicit_reranker_identity_cannot_be_overridden_by_environment(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("REPOPILOT_RERANKER_MODEL", "environment/model")
+    monkeypatch.setenv("REPOPILOT_RERANKER_REVISION", "environment-revision")
+
+    reranker = LocalCrossEncoderReranker(
+        cache_directory=tmp_path,
+        model="locked/model",
+        revision="locked-revision",
+    )
+
+    assert reranker.model == "locked/model"
+    assert reranker.revision == "locked-revision"

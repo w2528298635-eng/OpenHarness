@@ -187,3 +187,19 @@ def test_local_encoder_returns_empty_for_empty_chunk_set(tmp_path: Path, monkeyp
 
     assert encoder.rank_many(["query"], [], top_k=5) == []
     assert encoder.last_stats == {"cache_hits": 0, "cache_misses": 0}
+
+
+def test_explicit_embedding_identity_cannot_be_overridden_by_environment(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("REPOPILOT_EMBEDDING_MODEL", "environment/model")
+    monkeypatch.setenv("REPOPILOT_EMBEDDING_REVISION", "environment-revision")
+
+    encoder = LocalEmbeddingEncoder(
+        cache_directory=tmp_path,
+        model="locked/model",
+        revision="locked-revision",
+    )
+
+    assert encoder.model == "locked/model"
+    assert encoder.revision == "locked-revision"

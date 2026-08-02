@@ -11,6 +11,16 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..context import ContextBuilder
+from ..embedding import (
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_EMBEDDING_REVISION,
+    DEFAULT_MAX_SEQ_LENGTH,
+)
+from ..reranker import (
+    DEFAULT_RERANKER_MAX_LENGTH,
+    DEFAULT_RERANKER_MODEL,
+    DEFAULT_RERANKER_REVISION,
+)
 from ..retrieval import RepositoryIndex
 from .gold import extract_gold_files, extract_gold_labels
 from .localization import LocalizationMetrics, RetrievedLocation, score_localization
@@ -36,8 +46,15 @@ class LocalizationRunConfig(BaseModel):
     retrieval_strategy: Literal["lexical", "hybrid"] = "lexical"
     query_planning: bool = True
     structural_expansion: bool = False
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL
+    embedding_revision: str = DEFAULT_EMBEDDING_REVISION
+    embedding_max_seq_length: int = Field(default=DEFAULT_MAX_SEQ_LENGTH, ge=64)
     reranker: Literal["none", "cross_encoder"] = "none"
+    reranker_model: str = DEFAULT_RERANKER_MODEL
+    reranker_revision: str = DEFAULT_RERANKER_REVISION
+    reranker_max_length: int = Field(default=DEFAULT_RERANKER_MAX_LENGTH, ge=64)
     reranker_candidate_k: int = Field(default=40, ge=1, le=100)
+    reranker_weight: float = Field(default=0.5, ge=0.0, le=1.0)
     reranker_strict: bool = True
     char_budget: int = Field(default=12_000, ge=100)
     top_k: int = Field(default=12, ge=1, le=100)
@@ -100,8 +117,15 @@ def evaluate_localization_instance(
     retrieval_strategy: Literal["lexical", "hybrid"] = "lexical",
     query_planning: bool = True,
     structural_expansion: bool = False,
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL,
+    embedding_revision: str = DEFAULT_EMBEDDING_REVISION,
+    embedding_max_seq_length: int = DEFAULT_MAX_SEQ_LENGTH,
     reranker: Literal["none", "cross_encoder"] = "none",
+    reranker_model: str = DEFAULT_RERANKER_MODEL,
+    reranker_revision: str = DEFAULT_RERANKER_REVISION,
+    reranker_max_length: int = DEFAULT_RERANKER_MAX_LENGTH,
     reranker_candidate_k: int = 40,
+    reranker_weight: float = 0.5,
     reranker_strict: bool = True,
 ) -> LocalizationRecord:
     """Score a task after retrieval output is generated and checkpoint it atomically."""
@@ -110,8 +134,15 @@ def evaluate_localization_instance(
         retrieval_strategy=retrieval_strategy,
         query_planning=query_planning,
         structural_expansion=structural_expansion,
+        embedding_model=embedding_model,
+        embedding_revision=embedding_revision,
+        embedding_max_seq_length=embedding_max_seq_length,
         reranker=reranker,
+        reranker_model=reranker_model,
+        reranker_revision=reranker_revision,
+        reranker_max_length=reranker_max_length,
         reranker_candidate_k=reranker_candidate_k,
+        reranker_weight=reranker_weight,
         reranker_strict=reranker_strict,
         char_budget=char_budget,
         top_k=top_k,
@@ -142,8 +173,15 @@ def evaluate_localization_instance(
         retrieval_strategy=retrieval_strategy,
         query_planning=query_planning,
         structural_expansion=structural_expansion,
+        embedding_model=embedding_model,
+        embedding_revision=embedding_revision,
+        embedding_max_seq_length=embedding_max_seq_length,
         reranker=reranker,
+        reranker_model=reranker_model,
+        reranker_revision=reranker_revision,
+        reranker_max_length=reranker_max_length,
         reranker_candidate_k=reranker_candidate_k,
+        reranker_weight=reranker_weight,
         reranker_strict=reranker_strict,
     ).build(
         index=index,
@@ -188,8 +226,15 @@ def evaluate_localization_manifest(
     retrieval_strategy: Literal["lexical", "hybrid"] = "lexical",
     query_planning: bool = True,
     structural_expansion: bool = False,
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL,
+    embedding_revision: str = DEFAULT_EMBEDDING_REVISION,
+    embedding_max_seq_length: int = DEFAULT_MAX_SEQ_LENGTH,
     reranker: Literal["none", "cross_encoder"] = "none",
+    reranker_model: str = DEFAULT_RERANKER_MODEL,
+    reranker_revision: str = DEFAULT_RERANKER_REVISION,
+    reranker_max_length: int = DEFAULT_RERANKER_MAX_LENGTH,
     reranker_candidate_k: int = 40,
+    reranker_weight: float = 0.5,
     reranker_strict: bool = True,
 ) -> LocalizationCheckpoint:
     """Evaluate a frozen public manifest; gold patches are consumed only here."""
@@ -212,8 +257,15 @@ def evaluate_localization_manifest(
             retrieval_strategy=retrieval_strategy,
             query_planning=query_planning,
             structural_expansion=structural_expansion,
+            embedding_model=embedding_model,
+            embedding_revision=embedding_revision,
+            embedding_max_seq_length=embedding_max_seq_length,
             reranker=reranker,
+            reranker_model=reranker_model,
+            reranker_revision=reranker_revision,
+            reranker_max_length=reranker_max_length,
             reranker_candidate_k=reranker_candidate_k,
+            reranker_weight=reranker_weight,
             reranker_strict=reranker_strict,
         )
     return store.load()

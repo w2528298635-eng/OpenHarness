@@ -184,11 +184,23 @@ def test_localization_run_configuration_tracks_reranker_ablation() -> None:
 
     configuration = LocalizationRunConfig(
         retrieval_strategy="hybrid",
+        embedding_model="nomic-ai/CodeRankEmbed",
+        embedding_revision="3c4b60807d71f79b43f3c4363786d9493691f8b1",
+        embedding_max_seq_length=512,
         reranker="cross_encoder",
+        reranker_model="BAAI/bge-reranker-v2-m3",
+        reranker_revision="953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+        reranker_max_length=512,
         reranker_candidate_k=40,
+        reranker_weight=0.5,
         reranker_strict=True,
     )
 
     assert configuration.reranker == "cross_encoder"
+    assert configuration.embedding_model == "nomic-ai/CodeRankEmbed"
+    assert configuration.embedding_max_seq_length == 512
+    assert configuration.reranker_model == "BAAI/bge-reranker-v2-m3"
+    assert configuration.reranker_max_length == 512
     assert configuration.reranker_candidate_k == 40
+    assert configuration.reranker_weight == 0.5
     assert configuration.reranker_strict is True

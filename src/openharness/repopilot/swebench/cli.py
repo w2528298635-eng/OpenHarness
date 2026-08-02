@@ -11,6 +11,16 @@ from typing import Annotated
 
 import typer
 
+from ..embedding import (
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_EMBEDDING_REVISION,
+    DEFAULT_MAX_SEQ_LENGTH,
+)
+from ..reranker import (
+    DEFAULT_RERANKER_MAX_LENGTH,
+    DEFAULT_RERANKER_MODEL,
+    DEFAULT_RERANKER_REVISION,
+)
 from .adapters import EvaluationArm, InferenceBudget
 from .dataset import (
     HuggingFaceDatasetProvider,
@@ -386,10 +396,31 @@ def localize_command(
         bool,
         typer.Option("--structural-expansion/--no-structural-expansion"),
     ] = False,
+    embedding_model: Annotated[str, typer.Option("--embedding-model")] = (
+        DEFAULT_EMBEDDING_MODEL
+    ),
+    embedding_revision: Annotated[str, typer.Option("--embedding-revision")] = (
+        DEFAULT_EMBEDDING_REVISION
+    ),
+    embedding_max_seq_length: Annotated[
+        int, typer.Option("--embedding-max-seq-length", min=64)
+    ] = DEFAULT_MAX_SEQ_LENGTH,
     reranker: Annotated[str, typer.Option("--reranker")] = "none",
+    reranker_model: Annotated[str, typer.Option("--reranker-model")] = (
+        DEFAULT_RERANKER_MODEL
+    ),
+    reranker_revision: Annotated[str, typer.Option("--reranker-revision")] = (
+        DEFAULT_RERANKER_REVISION
+    ),
+    reranker_max_length: Annotated[
+        int, typer.Option("--reranker-max-length", min=64)
+    ] = DEFAULT_RERANKER_MAX_LENGTH,
     reranker_candidate_k: Annotated[
         int, typer.Option("--reranker-candidate-k", min=1, max=100)
     ] = 40,
+    reranker_weight: Annotated[
+        float, typer.Option("--reranker-weight", min=0.0, max=1.0)
+    ] = 0.5,
     reranker_strict: Annotated[
         bool,
         typer.Option("--reranker-strict/--reranker-fallback"),
@@ -422,8 +453,15 @@ def localize_command(
         retrieval_strategy=strategy,
         query_planning=query_planning,
         structural_expansion=structural_expansion,
+        embedding_model=embedding_model,
+        embedding_revision=embedding_revision,
+        embedding_max_seq_length=embedding_max_seq_length,
         reranker=reranker,
+        reranker_model=reranker_model,
+        reranker_revision=reranker_revision,
+        reranker_max_length=reranker_max_length,
         reranker_candidate_k=reranker_candidate_k,
+        reranker_weight=reranker_weight,
         reranker_strict=reranker_strict,
     )
     typer.echo(f"checkpoint: {checkpoint.resolve()}")

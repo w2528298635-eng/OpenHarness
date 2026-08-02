@@ -133,6 +133,86 @@ def test_prepare_can_stream_public_dataset_without_source(
     assert len(payload["instances"]) == 3
 
 
+def test_localize_forwards_normalized_reranker_weight(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from openharness.repopilot.swebench import cli as swebench_cli
+    from openharness.repopilot.swebench.dataset import prepare_manifest
+    from openharness.repopilot.swebench.models import SamplingConfig
+
+    class StaticProvider:
+        dataset_name = "fixture/verified"
+        revision = "fixture-sha"
+
+        def rows(self):
+            return _rows()
+
+    manifest_path = tmp_path / "manifest.json"
+    prepare_manifest(
+        StaticProvider(),
+        manifest_path,
+        SamplingConfig(easy=1, medium=1, hard=1),
+    )
+    captured = {}
+
+    monkeypatch.setattr(
+        swebench_cli,
+        "HuggingFaceDatasetProvider",
+        lambda **_kwargs: StaticProvider(),
+    )
+
+    def fake_evaluate(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(records={})
+
+    monkeypatch.setattr(
+        swebench_cli,
+        "evaluate_localization_manifest",
+        fake_evaluate,
+    )
+    result = runner.invoke(
+        app,
+        [
+            "repopilot",
+            "swebench",
+            "localize",
+            str(manifest_path),
+            "--checkpoint",
+            str(tmp_path / "checkpoint.json"),
+            "--repository-root",
+            str(tmp_path),
+            "--reranker",
+            "cross_encoder",
+            "--embedding-model",
+            "custom/code-encoder",
+            "--embedding-revision",
+            "embedding-revision",
+            "--embedding-max-seq-length",
+            "768",
+            "--reranker-model",
+            "custom/code-reranker",
+            "--reranker-revision",
+            "reranker-revision",
+            "--reranker-max-length",
+            "1024",
+            "--reranker-weight",
+            "0.35",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["embedding_model"] == "custom/code-encoder"
+    assert captured["embedding_revision"] == "embedding-revision"
+    assert captured["embedding_max_seq_length"] == 768
+    assert captured["reranker_model"] == "custom/code-reranker"
+    assert captured["reranker_revision"] == "reranker-revision"
+    assert captured["reranker_max_length"] == 1024
+    assert captured["reranker_weight"] == 0.35
+
+
 def test_doctor_can_emit_machine_readable_json(monkeypatch) -> None:
     from openharness.repopilot.swebench import cli as swebench_cli
 

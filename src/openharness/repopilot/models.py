@@ -7,6 +7,17 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from .embedding import (
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_EMBEDDING_REVISION,
+    DEFAULT_MAX_SEQ_LENGTH,
+)
+from .reranker import (
+    DEFAULT_RERANKER_MAX_LENGTH,
+    DEFAULT_RERANKER_MODEL,
+    DEFAULT_RERANKER_REVISION,
+)
+
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
@@ -57,8 +68,15 @@ class RetrievalConfig(BaseModel):
     strategy: Literal["lexical", "hybrid"] = "lexical"
     query_planning: bool = True
     structural_expansion: bool = False
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL
+    embedding_revision: str = DEFAULT_EMBEDDING_REVISION
+    embedding_max_seq_length: int = Field(default=DEFAULT_MAX_SEQ_LENGTH, ge=64)
     reranker: Literal["none", "cross_encoder"] = "none"
+    reranker_model: str = DEFAULT_RERANKER_MODEL
+    reranker_revision: str = DEFAULT_RERANKER_REVISION
+    reranker_max_length: int = Field(default=DEFAULT_RERANKER_MAX_LENGTH, ge=64)
     reranker_candidate_k: int = Field(default=40, ge=1, le=100)
+    reranker_weight: float = Field(default=0.5, ge=0.0, le=1.0)
     reranker_strict: bool = False
     max_file_bytes: int = Field(default=200_000, ge=1024)
     max_chunk_chars: int = Field(default=4000, ge=200)

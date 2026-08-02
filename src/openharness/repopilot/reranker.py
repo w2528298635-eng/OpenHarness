@@ -18,6 +18,46 @@ DEFAULT_RERANKER_REVISION = "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e"
 DEFAULT_RERANKER_MAX_LENGTH = 512
 
 
+def _min_max_normalize(values: list[float]) -> list[float]:
+    if not values:
+        return []
+    minimum = min(values)
+    span = max(values) - minimum
+    if span == 0:
+        return [0.0 for _value in values]
+    return [(value - minimum) / span for value in values]
+
+
+def blend_rankings(
+    *,
+    base_scores: list[float],
+    reranked: list[tuple[int, float]],
+    reranker_weight: float,
+    top_k: int,
+) -> list[tuple[int, float]]:
+    """Blend normalized candidate-generation and cross-encoder evidence."""
+    if not 0.0 <= reranker_weight <= 1.0:
+        raise ValueError("reranker weight must be between 0 and 1")
+    if not base_scores or not reranked:
+        return []
+    base_normalized = _min_max_normalize(base_scores)
+    reranker_normalized = _min_max_normalize([score for _index, score in reranked])
+    combined = [
+        (
+            index,
+            (1.0 - reranker_weight) * base_normalized[index]
+            + reranker_weight * reranker_score,
+        )
+        for (index, _score), reranker_score in zip(
+            reranked,
+            reranker_normalized,
+            strict=True,
+        )
+    ]
+    combined.sort(key=lambda item: (-item[1], item[0]))
+    return combined[: min(top_k, len(combined))]
+
+
 class LocalCrossEncoderReranker:
     """Reorder an already-retrieved candidate set with a local cross-encoder."""
 
@@ -50,8 +90,8 @@ class LocalCrossEncoderReranker:
                 r"E:\RepoPilot\models\repopilot-index",
             )
         )
-        self.model = os.environ.get("REPOPILOT_RERANKER_MODEL", model)
-        self.revision = os.environ.get("REPOPILOT_RERANKER_REVISION", revision)
+        self.model = model
+        self.revision = revision
         self.max_length = max_length
         self.batch_size = batch_size
         self.last_stats: dict[str, int] = {}

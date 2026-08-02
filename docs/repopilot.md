@@ -98,6 +98,16 @@ retrieval:
   strategy: hybrid
   query_planning: true
   structural_expansion: false
+  embedding_model: nomic-ai/CodeRankEmbed
+  embedding_revision: 3c4b60807d71f79b43f3c4363786d9493691f8b1
+  embedding_max_seq_length: 512
+  reranker: cross_encoder
+  reranker_model: BAAI/bge-reranker-v2-m3
+  reranker_revision: 953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e
+  reranker_max_length: 512
+  reranker_candidate_k: 40
+  reranker_weight: 0.5
+  reranker_strict: true
   max_file_bytes: 200000
   max_chunk_chars: 4000
   context_char_budget: 12000
@@ -141,9 +151,11 @@ Observation 必须回传给模型，因为模型需要它判断下一步；同�
 `RepositoryIndex` 会忽略 Git、缓存、虚拟环境、二进制和超大文件；Python 文件按
 AST 顶层类/函数切块，其他文本按大小切块。`QueryPlanner` 从问题描述中抽取异常名、
 代码标识符和模块路径，并生成多条面向代码搜索的查询。关键词通道使用 TF-IDF 风格
-词项分数和符号/路径加权；语义通道使用本地 `BAAI/bge-small-en-v1.5` 对整个仓库独立
-取 top-100。两路分数归一化后按 `0.45 / 0.55` 融合，因此语义通道可以召回完全不在
-关键词候选集中的代码。
+词项分数和符号/路径加权；语义通道使用固定 revision 的 `nomic-ai/CodeRankEmbed` 对整个
+仓库独立取 top-100。两路分数归一化后按 `0.45 / 0.55` 融合，因此语义通道可以召回完全
+不在关键词候选集中的代码。启用 Cross-Encoder 时，仅对融合 top-40 候选运行固定 revision
+的 `BAAI/bge-reranker-v2-m3`；候选分数和精排分数分别归一化后按 `0.5 / 0.5` 融合，再取
+最终 top-12。精排不能生成候选集外的新代码块。
 
 可选的结构扩展会在融合结果后补入同文件相关定义，以及引用种子符号的其他片段。
 `ContextBuilder` 再优先放入验证失败、已怀疑文件和高分片段，按字符预算截断，并保存
@@ -198,6 +210,13 @@ Embedding 缓存按实际编码文本的 SHA-256 寻址，而不是按会随行�
 28.89%，Hit@5 从 15.56% 提升到 33.33%，MRR 从 0.133 提升到 0.239；无关上下文率
 从 89.69% 降到 85.12%。这是文件定位指标，不是端到端修复成功率，也不是官方
 SWE-bench resolved rate。详见 [45 题定位报告](evidence/swebench/planned-dual-45.md)。
+
+进一步替换专业代码 Embedding 并加入候选集内 Cross-Encoder 后，相对旧通用 BGE 双路
+检索，Recall@1 从 15.56% 提升到 22.22%，Recall@5 从 28.89% 提升到 32.22%，
+Hit@5 从 33.33% 提升到 37.78%，MRR 从 0.239 提升到 0.307，无关上下文率从
+85.12% 降到 83.04%。配对 bootstrap 中 MRR 和噪声率增量的95%区间均未跨0；召回
+区间仍跨0，因此只报告方向性召回改善。详见
+[专业代码 Embedding 与 Cross-Encoder 45题报告](evidence/swebench/code-embedding-reranker-45.md)。
 
 ## 评测、API 和第二工作流
 

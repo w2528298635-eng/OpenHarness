@@ -58,6 +58,9 @@ def test_context_builder_uses_hybrid_retrieval_when_enabled(tmp_path: Path, monk
     monkeypatch.setenv("REPOPILOT_HYBRID_RETRIEVAL", "1")
 
     class FakeEncoder:
+        def __init__(self, **_kwargs):
+            pass
+
         def __call__(self, texts):
             return [[1.0, 0.0] for _ in texts]
 
@@ -100,16 +103,22 @@ def test_context_builder_reranks_only_fused_candidates_before_top_k(
     captured = {}
 
     class FakeEncoder:
+        def __init__(self, **kwargs):
+            captured["embedding_config"] = kwargs
+
         def rank_many(self, _queries, chunks, *, top_k):
             assert top_k == 100
             return [(index, 0.9 - index * 0.1) for index, _chunk in enumerate(chunks)]
 
     class FakeReranker:
+        def __init__(self, **kwargs):
+            captured["reranker_config"] = kwargs
+
         def rank(self, query, candidates, *, top_k):
             captured["query"] = query
             captured["candidate_ids"] = [chunk.chunk_id for chunk in candidates]
             captured["top_k"] = top_k
-            return [(1, 8.5)]
+            return [(1, 8.5), (0, 1.0)]
 
     monkeypatch.setattr(context_module, "LocalEmbeddingEncoder", FakeEncoder)
     monkeypatch.setattr(context_module, "LocalCrossEncoderReranker", FakeReranker)
@@ -117,15 +126,32 @@ def test_context_builder_reranks_only_fused_candidates_before_top_k(
         char_budget=500,
         top_k=1,
         retrieval_strategy="hybrid",
+        embedding_model="custom/code-encoder",
+        embedding_revision="embedding-revision",
+        embedding_max_seq_length=768,
         reranker="cross_encoder",
+        reranker_model="custom/code-reranker",
+        reranker_revision="reranker-revision",
+        reranker_max_length=1024,
         reranker_candidate_k=40,
+        reranker_weight=0.75,
     ).build(
         index=RepositoryIndex.build(tmp_path),
         query="mask propagation fails for None",
     )
 
     assert len(captured["candidate_ids"]) == 2
-    assert captured["top_k"] == 1
+    assert captured["embedding_config"] == {
+        "model": "custom/code-encoder",
+        "revision": "embedding-revision",
+        "max_seq_length": 768,
+    }
+    assert captured["reranker_config"] == {
+        "model": "custom/code-reranker",
+        "revision": "reranker-revision",
+        "max_length": 1024,
+    }
+    assert captured["top_k"] == 2
     assert selection.selected_chunks[0].chunk.path == "target.py"
     assert "reranker" in selection.selected_chunks[0].reason
 

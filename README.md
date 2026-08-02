@@ -17,7 +17,8 @@ This fork also includes [RepoPilot](docs/repopilot.md), a deterministic local Py
 
 RepoPilot now includes a reusable workflow runtime, bounded recovery, composite
 verification, Git worktree isolation, typed run telemetry, versioned prompts,
-planned independent lexical/dense code retrieval, optional structural context expansion, a 10-task evaluation suite, a local FastAPI
+planned independent lexical/dense code retrieval, revision-pinned professional code embeddings,
+candidate-bounded Cross-Encoder reranking, optional structural context expansion, a 10-task evaluation suite, a local FastAPI
 adapter, and a second read-only repository-insight workflow. See the
 [architecture](docs/repopilot-architecture.md),
 [measured evaluation](docs/repopilot-evaluation.md), and
@@ -32,11 +33,13 @@ calibration patches. The record deliberately limits the official result to its
 actual denominator (one task per upgraded arm) and does **not** claim broad
 benchmark resolution or RAG uplift.
 
-The retrieval upgrade is backed by a
-[45-task localization evaluation](docs/evidence/swebench/planned-dual-45.md).
-Compared with lexical retrieval, planned independent lexical/dense recall raised
-Recall@5 from 15.56% to 28.89%, Hit@5 from 15.56% to 33.33%, and MRR from
-0.133 to 0.239. A separate
+The retrieval upgrade is backed by a frozen
+[45-task embedding/reranker evaluation](docs/evidence/swebench/code-embedding-reranker-45.md).
+Compared with the previous generic-BGE dual retriever, pinned CodeRankEmbed plus
+normalized 50/50 Cross-Encoder blending raised Recall@1 from 15.56% to 22.22%,
+Recall@5 from 28.89% to 32.22%, Hit@5 from 33.33% to 37.78%, and MRR from
+0.239 to 0.307, while reducing irrelevant context from 85.12% to 83.04%.
+A separate
 [component ablation](docs/evidence/swebench/retrieval-ablation-pilot3.md) keeps
 structural expansion opt-in because it reduced the observed ranking quality.
 These are development-set localization results, not end-to-end repair uplift or
