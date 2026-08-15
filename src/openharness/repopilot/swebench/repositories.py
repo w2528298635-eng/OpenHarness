@@ -94,7 +94,17 @@ class SelectedRepositoryCache:
                 f"worktree already exists: {worktree_path}"
             )
 
-        if not (repository_path / ".git").exists():
+        repository_is_usable = False
+        if (repository_path / ".git").exists():
+            repository_check = self.command_runner.run(
+                ["git", "rev-parse", "--is-inside-work-tree"],
+                cwd=repository_path,
+            )
+            repository_is_usable = (
+                repository_check.exit_code == 0
+                and repository_check.stdout.strip() == "true"
+            )
+        if not repository_is_usable:
             repository_path.mkdir(parents=True, exist_ok=True)
             _checked(
                 self.command_runner,
@@ -112,6 +122,30 @@ class SelectedRepositoryCache:
                 ],
                 cwd=repository_path,
             )
+
+        # All selected repositories use blob-less fetches. These settings are
+        # harmless for a healthy cache and repair a previously interrupted one:
+        # Git can then obtain any missing blob during worktree checkout.
+        _checked(
+            self.command_runner,
+            ["git", "config", "remote.origin.promisor", "true"],
+            cwd=repository_path,
+        )
+        _checked(
+            self.command_runner,
+            [
+                "git",
+                "config",
+                "remote.origin.partialclonefilter",
+                "blob:none",
+            ],
+            cwd=repository_path,
+        )
+        _checked(
+            self.command_runner,
+            ["git", "config", "extensions.partialClone", "origin"],
+            cwd=repository_path,
+        )
 
         _checked(
             self.command_runner,

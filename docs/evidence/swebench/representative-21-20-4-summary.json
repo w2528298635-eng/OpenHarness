@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "status": "complete_non_overlapping_localization_evaluation",
+  "dataset": "SWE-bench/SWE-bench_Verified",
+  "dataset_revision": "91aa3ed51b709be6457e12d00300a6a596d4c6a3",
+  "sample_size": 45,
+  "strata": {
+    "easy": 21,
+    "medium": 20,
+    "hard": 4
+  },
+  "selection_seed": 20260814,
+  "overlap_with_prior_45": 0,
+  "manifest_sha256": "d43a4812edbbec458cd1e516c9a1088175909613b07b3ea56bd3db033fe9dedf",
+  "manifest_file_sha256": "bad880edb6d6ecb75bdf4fa3e6696d13a5f35b9e33002ebef5d0658f99f6aec2",
+  "protocol": {
+    "gold_usage": "Gold patches were consumed only after ranking for localization scoring.",
+    "retrieval_strategy": "hybrid",
+    "query_planning": true,
+    "structural_expansion": false,
+    "char_budget": 12000,
+    "top_k": 12
+  },
+  "baseline": {
+    "name": "legacy_generic_bge",
+    "embedding_model": "BAAI/bge-small-en-v1.5",
+    "embedding_revision": "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a",
+    "embedding_max_seq_length": 128,
+    "reranker": "none"
+  },
+  "candidate": {
+    "name": "coderank_cross_encoder",
+    "embedding_model": "nomic-ai/CodeRankEmbed",
+    "embedding_revision": "3c4b60807d71f79b43f3c4363786d9493691f8b1",
+    "embedding_max_seq_length": 512,
+    "reranker_model": "BAAI/bge-reranker-v2-m3",
+    "reranker_revision": "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+    "reranker_max_length": 512,
+    "reranker_candidate_k": 40,
+    "reranker_weight": 0.5
+  },
+  "results": {
+    "legacy_generic_bge": {
+      "recall_at_1": 0.205556,
+      "recall_at_3": 0.364815,
+      "recall_at_5": 0.394444,
+      "hit_at_5": 0.422222,
+      "mrr": 0.316138,
+      "irrelevant_context_rate": 0.819014
+    },
+    "coderank_cross_encoder": {
+      "recall_at_1": 0.272222,
+      "recall_at_3": 0.427778,
+      "recall_at_5": 0.45,
+      "hit_at_5": 0.466667,
+      "mrr": 0.368519,
+      "irrelevant_context_rate": 0.79751,
+      "by_difficulty": {
+        "easy": {
+          "tasks": 21,
+          "recall_at_1": 0.285714,
+          "recall_at_5": 0.52381,
+          "mrr": 0.384921,
+          "irrelevant_context_rate": 0.790197
+        },
+        "medium": {
+          "tasks": 20,
+          "recall_at_1": 0.3125,
+          "recall_at_5": 0.4625,
+          "mrr": 0.425,
+          "irrelevant_context_rate": 0.76469
+        },
+        "hard": {
+          "tasks": 4,
+          "recall_at_1": 0.0,
+          "recall_at_5": 0.0,
+          "mrr": 0.0,
+          "irrelevant_context_rate": 1.0
+        }
+      }
+    }
+  },
+  "deltas": {
+    "recall_at_1_absolute": 0.066666,
+    "recall_at_5_absolute": 0.055556,
+    "hit_at_5_absolute": 0.044445,
+    "mrr_absolute": 0.052381,
+    "irrelevant_context_rate_absolute": -0.021504
+  },
+  "paired_statistics": {
+    "resamples": 10000,
+    "permutations": 100000,
+    "seed": 20260815,
+    "recall_at_1_delta_ci95": [-0.044444, 0.177778],
+    "recall_at_5_delta_ci95": [-0.055556, 0.166667],
+    "hit_at_5_delta_ci95": [-0.088889, 0.155556],
+    "mrr_delta_ci95": [-0.036508, 0.143122],
+    "irrelevant_context_rate_delta_ci95": [-0.092023, 0.046616]
+  },
+  "raw_checkpoint_sha256": {
+    "legacy_generic_bge": "f31176fdbf1e110f56f69ad8ceb01288e50ef7104b05ee2c683d9d3f8f6e83bd",
+    "coderank_cross_encoder": "c49ff50d30ade3b25cac05585b6cdd9d123de7cfccf9e7324a5a939372c0daef"
+  },
+  "limitations": [
+    "This is code-localization evaluation, not end-to-end patch resolution.",
+    "The fixed 21/20/4 strata are not the exact 194/261/45 source proportions.",
+    "The 45 public tasks do not overlap the prior development 45, but they are not private or hidden test data.",
+    "All paired 95% intervals cross zero, so the observed aggregate uplift is directional and statistically inconclusive.",
+    "The candidate scored zero on the four hard tasks; this regression is not hidden by the aggregate result.",
+    "Latency used different models and cache states and is not presented as a speed comparison."
+  ]
+}

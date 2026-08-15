@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "dataset_name": "SWE-bench/SWE-bench_Verified",
+  "dataset_revision": "91aa3ed51b709be6457e12d00300a6a596d4c6a3",
+  "selection_seed": 20260814,
+  "requested_strata": {
+    "easy": 21,
+    "medium": 20,
+    "hard": 4
+  },
+  "excluded_manifest": "formal-manifest.json",
+  "excluded_manifest_sha256": "9b12758c4b8967d92d07200addb94ac12abe9244b2a208917ca854493e75cde0",
+  "excluded_instances": 45,
+  "remaining_candidates": 455,
+  "new_manifest": "representative-21-20-4-manifest.json",
+  "new_manifest_sha256": "d43a4812edbbec458cd1e516c9a1088175909613b07b3ea56bd3db033fe9dedf",
+  "overlap_count": 0,
+  "source_difficulty_counts": {
+    "1-4 hours": 42,
+    "15 min - 1 hour": 261,
+    "<15 min fix": 194,
+    ">4 hours": 3
+  }
+}

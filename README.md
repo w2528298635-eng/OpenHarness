@@ -33,12 +33,17 @@ calibration patches. The record deliberately limits the official result to its
 actual denominator (one task per upgraded arm) and does **not** claim broad
 benchmark resolution or RAG uplift.
 
-The retrieval upgrade is backed by a frozen
-[45-task embedding/reranker evaluation](docs/evidence/swebench/code-embedding-reranker-45.md).
-Compared with the previous generic-BGE dual retriever, pinned CodeRankEmbed plus
-normalized 50/50 Cross-Encoder blending raised Recall@1 from 15.56% to 22.22%,
-Recall@5 from 28.89% to 32.22%, Hit@5 from 33.33% to 37.78%, and MRR from
-0.239 to 0.307, while reducing irrelevant context from 85.12% to 83.04%.
+The retrieval upgrade is now backed by a second, zero-overlap
+[45-task fixed-stratum evaluation](docs/evidence/swebench/representative-21-20-4.md)
+(21 easy / 20 medium / 4 hard). On these new public tasks, pinned CodeRankEmbed
+plus normalized 50/50 Cross-Encoder blending raised Recall@1 from 20.56% to
+27.22%, Recall@5 from 39.44% to 45.00%, Hit@5 from 42.22% to 46.67%, and MRR
+from 0.316 to 0.369, while reducing irrelevant context from 81.90% to 79.75%.
+All paired 95% intervals still cross zero, and the candidate missed all four
+hard tasks, so this is directional evidence rather than a significance claim.
+The earlier
+[10/15/20 development stress test](docs/evidence/swebench/code-embedding-reranker-45.md)
+is retained as a separate, harder-skewed ablation record.
 A separate
 [component ablation](docs/evidence/swebench/retrieval-ablation-pilot3.md) keeps
 structural expansion opt-in because it reduced the observed ranking quality.
