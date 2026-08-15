@@ -1,0 +1,58 @@
+{
+  "manifest_sha256": "9b12758c4b8967d92d07200addb94ac12abe9244b2a208917ca854493e75cde0",
+  "protocol": "post-inference-only gold evaluation; no gold fields were supplied to retrieval query or agent",
+  "groups": {
+    "overall": {
+      "tasks": 45,
+      "file_recall_at_1": 0.111111,
+      "file_recall_at_3": 0.155556,
+      "file_recall_at_5": 0.155556,
+      "file_hit_at_5": 0.155556,
+      "mrr": 0.133333,
+      "ndcg_at_5": 0.139152,
+      "irrelevant_context_rate": 0.896922,
+      "mean_index_seconds": 26.226336,
+      "mean_retrieval_seconds": 3.406904,
+      "mean_estimated_context_tokens": 3205.577778
+    },
+    "easy": {
+      "tasks": 10,
+      "file_recall_at_1": 0.3,
+      "file_recall_at_3": 0.3,
+      "file_recall_at_5": 0.3,
+      "file_hit_at_5": 0.3,
+      "mrr": 0.3,
+      "ndcg_at_5": 0.3,
+      "irrelevant_context_rate": 0.692017,
+      "mean_index_seconds": 17.948361,
+      "mean_retrieval_seconds": 2.500395,
+      "mean_estimated_context_tokens": 2607.5
+    },
+    "medium": {
+      "tasks": 15,
+      "file_recall_at_1": 0.066667,
+      "file_recall_at_3": 0.2,
+      "file_recall_at_5": 0.2,
+      "file_hit_at_5": 0.2,
+      "mrr": 0.133333,
+      "ndcg_at_5": 0.150791,
+      "irrelevant_context_rate": 0.940411,
+      "mean_index_seconds": 24.772898,
+      "mean_retrieval_seconds": 3.566226,
+      "mean_estimated_context_tokens": 3472.6
+    },
+    "hard": {
+      "tasks": 20,
+      "file_recall_at_1": 0.05,
+      "file_recall_at_3": 0.05,
+      "file_recall_at_5": 0.05,
+      "file_hit_at_5": 0.05,
+      "mrr": 0.05,
+      "ndcg_at_5": 0.05,
+      "irrelevant_context_rate": 0.966758,
+      "mean_index_seconds": 31.455401,
+      "mean_retrieval_seconds": 3.740668,
+      "mean_estimated_context_tokens": 3304.35
+    }
+  }
+}

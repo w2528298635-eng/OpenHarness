@@ -1,0 +1,76 @@
+{
+  "status": "complete_development_evaluation",
+  "sample_size": 45,
+  "dataset": "SWE-bench/SWE-bench_Verified",
+  "sample_manifest": "formal-manifest.json",
+  "manifest_sha256": "9b12758c4b8967d92d07200addb94ac12abe9244b2a208917ca854493e75cde0",
+  "protocol": "Gold patches were consumed only after retrieval for file-localization scoring.",
+  "warning": "This evaluates localization, not end-to-end patch correctness. Public tasks were used during development, so this is not an untouched confirmatory benchmark.",
+  "results": {
+    "lexical_baseline": {
+      "recall_at_1": 0.111111,
+      "recall_at_5": 0.155556,
+      "hit_at_5": 0.155556,
+      "mrr": 0.133333,
+      "irrelevant_context_rate": 0.896922,
+      "mean_retrieval_seconds": 3.406904
+    },
+    "candidate_set_semantic_rerank": {
+      "recall_at_1": 0.133333,
+      "recall_at_5": 0.211111,
+      "hit_at_5": 0.222222,
+      "mrr": 0.177778,
+      "irrelevant_context_rate": 0.858419,
+      "mean_retrieval_seconds": 49.088382
+    },
+    "planned_independent_dual_retrieval": {
+      "configuration": {
+        "retrieval_strategy": "hybrid",
+        "query_planning": true,
+        "structural_expansion": false,
+        "char_budget": 12000,
+        "top_k": 12
+      },
+      "recall_at_1": 0.155556,
+      "recall_at_3": 0.277778,
+      "recall_at_5": 0.288889,
+      "hit_at_5": 0.333333,
+      "mrr": 0.238889,
+      "irrelevant_context_rate": 0.851204,
+      "mean_index_seconds": 35.065013,
+      "mean_retrieval_seconds": 27.724837,
+      "mean_estimated_context_tokens": 3158.266667
+    },
+    "planned_dual_with_structural_expansion": {
+      "recall_at_1": 0.155556,
+      "recall_at_5": 0.244444,
+      "hit_at_5": 0.266667,
+      "mrr": 0.192593,
+      "irrelevant_context_rate": 0.879872,
+      "mean_retrieval_seconds": 29.179852
+    }
+  },
+  "recommended_by_difficulty": {
+    "easy": {
+      "tasks": 10,
+      "recall_at_5": 0.5,
+      "hit_at_5": 0.5,
+      "mrr": 0.4,
+      "irrelevant_context_rate": 0.858517
+    },
+    "medium": {
+      "tasks": 15,
+      "recall_at_5": 0.366667,
+      "hit_at_5": 0.4,
+      "mrr": 0.283333,
+      "irrelevant_context_rate": 0.803625
+    },
+    "hard": {
+      "tasks": 20,
+      "recall_at_5": 0.125,
+      "hit_at_5": 0.2,
+      "mrr": 0.125,
+      "irrelevant_context_rate": 0.883231
+    }
+  }
+}

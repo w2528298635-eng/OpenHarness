@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-07-30",
+  "formal_manifest": {
+    "instances": 45,
+    "easy": 10,
+    "medium": 15,
+    "hard": 20,
+    "unique_repositories": 12,
+    "sha256": "9b12758c4b8967d92d07200addb94ac12abe9244b2a208917ca854493e75cde0",
+    "bytes": 137983
+  },
+  "pilot_manifest": {
+    "instances": 3,
+    "unique_repositories": 3,
+    "sha256": "238a62a8ba8e9ea79734c3a98b877d11606ecb7c8892f225549d42f6d223ee91",
+    "instance_ids": [
+      "scikit-learn__scikit-learn-13439",
+      "matplotlib__matplotlib-24637",
+      "django__django-15957"
+    ]
+  },
+  "downloads": {
+    "huggingface_metadata_cache_mib": 1.99,
+    "pilot_selected_commit_cache_and_worktrees_mib": 175.77,
+    "formal_selected_commit_cache_and_worktrees_gib": 1.476,
+    "formal_worktrees_verified": 45,
+    "formal_commit_mismatches": 0,
+    "formal_extra_worktrees": 0,
+    "unselected_task_repositories_downloaded": 0,
+    "unselected_task_docker_images_built": 0
+  },
+  "host": {
+    "system": "Windows",
+    "architecture": "AMD64",
+    "logical_cpus": 16,
+    "ram_gib": 15.9,
+    "e_drive_free_gib": 82.4
+  },
+  "docker": {
+    "desktop_version": "4.84.0",
+    "engine_state_observed_in_ui": "running",
+    "backend": "WSL2",
+    "disk_image_location": "C:\\Users\\Administrator\\AppData\\Local\\Docker\\wsl",
+    "disk_used_gib": 12.51,
+    "disk_limit_gib": 1006.85,
+    "codex_shell_pipe_access": "denied"
+  },
+  "tooling": {
+    "python": "3.11.15",
+    "swebench": "4.1.0",
+    "datasets": "4.8.5"
+  },
+  "status": "blocked_before_official_harness_calibration",
+  "blockers": [
+    "Codex sandbox cannot access Docker Desktop's Windows named pipe.",
+    "The formal DeepSeek credential is not available to the Codex process.",
+    "Docker data is currently on C:; moving it to E: would restart Docker and may interrupt existing containers."
+  ]
+}

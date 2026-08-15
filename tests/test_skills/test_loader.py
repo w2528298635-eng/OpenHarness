@@ -7,7 +7,11 @@ from pathlib import Path
 
 from openharness.config.settings import Settings
 from openharness.skills import get_user_skills_dir, load_skill_registry
-from openharness.skills.loader import discover_project_skill_dirs, get_user_skill_dirs
+from openharness.skills.loader import (
+    discover_project_skill_dirs,
+    get_user_skill_dirs,
+    load_user_skills,
+)
 from openharness.skills.bundled import _parse_frontmatter as parse_bundled_frontmatter
 from openharness.skills.loader import _parse_skill_markdown as parse_skill_markdown
 
@@ -75,6 +79,20 @@ def test_get_user_skill_dirs_includes_openharness_claude_and_agents(tmp_path: Pa
     assert tmp_path / "config" / "skills" in dirs
     assert tmp_path / "home" / ".claude" / "skills" in dirs
     assert tmp_path / "home" / ".agents" / "skills" in dirs
+
+
+def test_load_user_skills_does_not_create_missing_compat_directories(
+    tmp_path: Path, monkeypatch
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(tmp_path / "config"))
+    monkeypatch.setattr(Path, "home", lambda: home)
+
+    load_user_skills()
+
+    assert not (home / ".claude").exists()
+    assert not (home / ".agents").exists()
 
 
 def test_user_skill_metadata_tracks_command_name_and_frontmatter_flags(tmp_path: Path, monkeypatch):

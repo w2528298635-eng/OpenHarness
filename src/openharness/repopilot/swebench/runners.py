@@ -1,0 +1,456 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from collections.abc import Awaitable, Callable
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+import yaml
+from pydantic import BaseModel, ConfigDict
+
+from openharness.engine.query import MaxTurnsExceeded
+from openharness.engine.stream_events import AssistantTurnComplete, ErrorEvent
+from openharness.repopilot.models import (
+    BudgetConfig,
+    Phase,
+    RepoTaskSpec,
+    RetrievalConfig,
+)
+from openharness.repopilot.phase_runner import OpenHarnessPhaseRunner
+from openharness.repopilot.scheduler import RepoPilotScheduler
+from openharness.repopilot.store import RunStore
+from openharness.repopilot.verifier import PythonPytestVerifier
+from openharness.repopilot.workspace import WorkspaceManager
+from openharness.ui.runtime import build_runtime, close_runtime
+
+from .adapters import (
+    LEGACY_REPOPILOT_COMMIT,
+    ArmConfig,
+    InferenceBudget,
+    RunnerOutcome,
+)
+from .localization import RetrievedLocation
+from .models import PublicInstance
+
+SchedulerFactory = Callable[
+    [Path, ArmConfig, InferenceBudget],
+    Any,
+]
+
+
+def patch_presence_command() -> list[str]:
+    """Return a public pytest argv that passes only after a Git change exists."""
+    check_path = Path(__file__).with_name("patch_presence_check.py")
+    return [sys.executable, "-m", "pytest", "-q", str(check_path)]
+
+
+def _default_scheduler(
+    repository_path: Path,
+    config: ArmConfig,
+    budget: InferenceBudget,
+) -> RepoPilotScheduler:
+    api_key = os.environ.get("OPENHARNESS_OPENAI_API_KEY") or os.environ.get(
+        "OPENAI_API_KEY"
+    )
+    phase_runner = OpenHarnessPhaseRunner(
+        model=config.model,
+        base_url=os.environ.get("OPENHARNESS_BASE_URL")
+        or os.environ.get("OPENAI_BASE_URL"),
+        api_key=api_key,
+        api_format=os.environ.get("OPENHARNESS_API_FORMAT") or "openai",
+    )
+    return RepoPilotScheduler(
+        store=RunStore(repository_path),
+        workspace=WorkspaceManager(),
+        verifier=PythonPytestVerifier(
+            timeout_seconds=min(300, budget.max_wall_seconds)
+        ),
+        phase_runner=phase_runner,
+    )
+
+
+def _retrieval_locations(run_dir: Path) -> tuple[RetrievedLocation, ...]:
+    locations: list[RetrievedLocation] = []
+    rank = 1
+    for path in sorted(run_dir.glob("context-*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        for selected in payload.get("selected_chunks", []):
+            chunk = selected.get("chunk", {})
+            file = chunk.get("path")
+            if not isinstance(file, str) or not file:
+                continue
+            text = chunk.get("text", "")
+            locations.append(
+                RetrievedLocation(
+                    file=file,
+                    symbol=chunk.get("symbol") or None,
+                    rank=rank,
+                    characters=len(text) if isinstance(text, str) else 0,
+                )
+            )
+            rank += 1
+    return tuple(locations)
+
+
+class CurrentRepoPilotRunner:
+    def __init__(
+        self,
+        *,
+        scheduler_factory: SchedulerFactory = _default_scheduler,
+    ):
+        self.scheduler_factory = scheduler_factory
+
+    async def run(
+        self,
+        *,
+        instance: PublicInstance,
+        repository_path: Path,
+        config: ArmConfig,
+        budget: InferenceBudget,
+    ) -> RunnerOutcome:
+        task = RepoTaskSpec(
+            repo_path=repository_path,
+            issue=instance.problem_statement,
+            verify_command=patch_presence_command(),
+            budgets=BudgetConfig(
+                max_phase_calls=budget.max_model_calls,
+                max_wall_seconds=budget.max_wall_seconds,
+                max_total_tokens=budget.max_total_tokens,
+            ),
+            retrieval=RetrievalConfig(enabled=config.retrieval_enabled),
+        )
+        scheduler = self.scheduler_factory(repository_path, config, budget)
+        state = await scheduler.start(task)
+        if state.worktree_path is None:
+            return RunnerOutcome(
+                status="failed",
+                run_id=state.run_id,
+                duration_seconds=0,
+                error="RepoPilot did not create a worktree",
+            )
+        model_patch = await WorkspaceManager().diff(state.worktree_path)
+        run_dir = RunStore(repository_path).run_dir(state.run_id)
+        duration = (
+            (state.completed_at - state.started_at).total_seconds()
+            if state.completed_at is not None
+            else max(0.0, (state.updated_at - state.started_at).total_seconds())
+        )
+        status = (
+            "completed"
+            if state.phase is Phase.COMPLETE and bool(model_patch.strip())
+            else "failed"
+        )
+        return RunnerOutcome(
+            status=status,
+            run_id=state.run_id,
+            model_patch=model_patch,
+            duration_seconds=duration,
+            input_tokens=state.budgets.input_tokens,
+            output_tokens=state.budgets.output_tokens,
+            cache_hit_tokens=state.budgets.cache_hit_tokens,
+            model_calls=state.budgets.phase_calls,
+            retrieval=_retrieval_locations(run_dir),
+            error=None if status == "completed" else state.terminal_reason,
+        )
+
+
+def git_diff(repository_path: Path) -> str:
+    result = subprocess.run(
+        ["git", "diff", "--binary", "--no-ext-diff"],
+        cwd=repository_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip() or "git diff failed")
+    return result.stdout
+
+
+class NativeOpenHarnessRunner:
+    def __init__(
+        self,
+        *,
+        runtime_factory: Callable[..., Any] = build_runtime,
+    ):
+        self.runtime_factory = runtime_factory
+
+    async def run(
+        self,
+        *,
+        instance: PublicInstance,
+        repository_path: Path,
+        config: ArmConfig,
+        budget: InferenceBudget,
+    ) -> RunnerOutcome:
+        prompt = (
+            "You are a coding agent operating on the repository at its provided "
+            "base commit. Diagnose and implement the following public GitHub issue. "
+            "Use repository tools to inspect and edit code. You may run tests already "
+            "present in the repository, but do not assume access to hidden evaluator "
+            "assets. Finish after producing the best patch within the fixed budget.\n\n"
+            f"Repository: {instance.repo}\n"
+            f"Instance: {instance.instance_id}\n"
+            f"Issue:\n{instance.problem_statement}"
+        )
+        bundle = await self.runtime_factory(
+            prompt=prompt,
+            cwd=str(repository_path),
+            max_turns=budget.max_model_calls,
+            permission_mode="full_auto",
+            include_project_memory=False,
+            model=config.model,
+            base_url=os.environ.get("OPENHARNESS_BASE_URL")
+            or os.environ.get("OPENAI_BASE_URL"),
+            api_key=os.environ.get("OPENHARNESS_OPENAI_API_KEY")
+            or os.environ.get("OPENAI_API_KEY"),
+            api_format=os.environ.get("OPENHARNESS_API_FORMAT") or "openai",
+        )
+        started = time.monotonic()
+        input_tokens = 0
+        output_tokens = 0
+        model_calls = 0
+        errors: list[str] = []
+        status = "completed"
+        try:
+            try:
+                async with asyncio.timeout(budget.max_wall_seconds):
+                    async for event in bundle.engine.submit_message(prompt):
+                        if isinstance(event, AssistantTurnComplete):
+                            model_calls += 1
+                            input_tokens += event.usage.input_tokens
+                            output_tokens += event.usage.output_tokens
+                        elif isinstance(event, ErrorEvent):
+                            errors.append(event.message)
+                            if not event.recoverable:
+                                status = "failed"
+                                break
+            except TimeoutError:
+                status = "timeout"
+                errors.append(
+                    f"native OpenHarness exceeded {budget.max_wall_seconds}s"
+                )
+            except MaxTurnsExceeded as exc:
+                status = "failed"
+                errors.append(str(exc))
+        finally:
+            if hasattr(bundle, "mcp_manager"):
+                await close_runtime(bundle)
+        model_patch = await WorkspaceManager().diff(repository_path)
+        if status == "completed" and not model_patch.strip():
+            status = "failed"
+            errors.append("native OpenHarness produced no patch")
+        if input_tokens + output_tokens > budget.max_total_tokens:
+            status = "failed"
+            errors.append(
+                f"token budget exceeded: {input_tokens + output_tokens} "
+                f"> {budget.max_total_tokens}"
+            )
+        return RunnerOutcome(
+            status=status,
+            run_id=f"native-{uuid4().hex[:12]}",
+            model_patch=model_patch,
+            duration_seconds=time.monotonic() - started,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            model_calls=model_calls,
+            error="; ".join(errors) or None,
+        )
+
+
+class ProcessResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    exit_code: int | None
+    stdout: str
+    stderr: str
+    timed_out: bool = False
+
+
+ProcessRunner = Callable[..., Awaitable[ProcessResult]]
+
+
+async def _run_process(
+    argv: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    timeout_seconds: float,
+) -> ProcessResult:
+    process = await asyncio.create_subprocess_exec(
+        *argv,
+        cwd=str(cwd),
+        env=env,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+            process.communicate(),
+            timeout=timeout_seconds,
+        )
+    except TimeoutError:
+        process.kill()
+        stdout_bytes, stderr_bytes = await process.communicate()
+        return ProcessResult(
+            exit_code=None,
+            stdout=stdout_bytes.decode(errors="replace"),
+            stderr=stderr_bytes.decode(errors="replace") or "legacy process timed out",
+            timed_out=True,
+        )
+    return ProcessResult(
+        exit_code=process.returncode,
+        stdout=stdout_bytes.decode(errors="replace"),
+        stderr=stderr_bytes.decode(errors="replace"),
+    )
+
+
+def _load_legacy_state(repository_path: Path, run_id: str) -> Any:
+    return RunStore(repository_path).load_state(run_id)
+
+
+class LegacyRepoPilotRunner:
+    def __init__(
+        self,
+        *,
+        legacy_source: Path,
+        artifact_root: Path,
+        process_runner: ProcessRunner = _run_process,
+        state_loader: Callable[[Path, str], Any] = _load_legacy_state,
+        validate_source_commit: bool = True,
+        task_observer: Callable[[RepoTaskSpec], None] | None = None,
+    ):
+        self.legacy_source = legacy_source
+        self.artifact_root = artifact_root
+        self.process_runner = process_runner
+        self.state_loader = state_loader
+        self.validate_source_commit = validate_source_commit
+        self.task_observer = task_observer
+
+    def _validate_source(self) -> None:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=self.legacy_source,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode or result.stdout.strip() != LEGACY_REPOPILOT_COMMIT:
+            raise RuntimeError(
+                "legacy source is not pinned to "
+                f"{LEGACY_REPOPILOT_COMMIT}: "
+                f"{result.stderr.strip() or result.stdout.strip()}"
+            )
+
+    async def run(
+        self,
+        *,
+        instance: PublicInstance,
+        repository_path: Path,
+        config: ArmConfig,
+        budget: InferenceBudget,
+    ) -> RunnerOutcome:
+        if self.validate_source_commit:
+            self._validate_source()
+        task = RepoTaskSpec(
+            repo_path=repository_path,
+            issue=instance.problem_statement,
+            verify_command=patch_presence_command(),
+            budgets=BudgetConfig(
+                max_phase_calls=budget.max_model_calls,
+                max_wall_seconds=budget.max_wall_seconds,
+                max_total_tokens=budget.max_total_tokens,
+            ),
+            retrieval=RetrievalConfig(enabled=False),
+        )
+        if self.task_observer is not None:
+            self.task_observer(task)
+        task_directory = self.artifact_root / "legacy-tasks"
+        task_directory.mkdir(parents=True, exist_ok=True)
+        task_path = task_directory / f"{instance.instance_id}-{uuid4().hex[:8]}.yaml"
+        task_path.write_text(
+            yaml.safe_dump(
+                task.model_dump(mode="json"),
+                allow_unicode=True,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        python_path = str(self.legacy_source / "src")
+        existing_python_path = os.environ.get("PYTHONPATH")
+        if existing_python_path:
+            python_path = python_path + os.pathsep + existing_python_path
+        env = {
+            **os.environ,
+            "PYTHONPATH": python_path,
+            "OPENHARNESS_MODEL": config.model,
+            "OPENHARNESS_API_FORMAT": os.environ.get(
+                "OPENHARNESS_API_FORMAT",
+                "openai",
+            ),
+        }
+        argv = [
+            sys.executable,
+            "-c",
+            "from openharness.cli import app; app()",
+            "repopilot",
+            "run",
+            str(task_path),
+        ]
+        started = time.monotonic()
+        process = await self.process_runner(
+            argv,
+            cwd=self.legacy_source,
+            env=env,
+            timeout_seconds=budget.max_wall_seconds,
+        )
+        if process.timed_out:
+            return RunnerOutcome(
+                status="timeout",
+                run_id=f"legacy-timeout-{uuid4().hex[:8]}",
+                duration_seconds=time.monotonic() - started,
+                error=process.stderr,
+            )
+        run_match = re.search(r"^run_id:\s*(\S+)", process.stdout, re.MULTILINE)
+        if run_match is None:
+            return RunnerOutcome(
+                status="failed",
+                run_id=f"legacy-failed-{uuid4().hex[:8]}",
+                duration_seconds=time.monotonic() - started,
+                error=(process.stderr or process.stdout or "legacy run returned no run_id")[
+                    -2000:
+                ],
+            )
+        run_id = run_match.group(1)
+        state = self.state_loader(repository_path, run_id)
+        if state.worktree_path is None:
+            return RunnerOutcome(
+                status="failed",
+                run_id=run_id,
+                duration_seconds=time.monotonic() - started,
+                error="legacy RepoPilot did not create a worktree",
+            )
+        model_patch = await WorkspaceManager().diff(state.worktree_path)
+        status = (
+            "completed"
+            if state.phase is Phase.COMPLETE and bool(model_patch.strip())
+            else "failed"
+        )
+        return RunnerOutcome(
+            status=status,
+            run_id=run_id,
+            model_patch=model_patch,
+            duration_seconds=time.monotonic() - started,
+            input_tokens=getattr(state.budgets, "input_tokens", 0),
+            output_tokens=getattr(state.budgets, "output_tokens", 0),
+            cache_hit_tokens=getattr(state.budgets, "cache_hit_tokens", 0),
+            model_calls=state.budgets.phase_calls,
+            error=None if status == "completed" else state.terminal_reason,
+        )

@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "status": "complete_development_localization_evaluation",
+  "dataset": "SWE-bench/SWE-bench_Verified",
+  "dataset_revision": "91aa3ed51b709be6457e12d00300a6a596d4c6a3",
+  "sample_size": 45,
+  "strata": {
+    "easy": 10,
+    "medium": 15,
+    "hard": 20
+  },
+  "manifest_sha256": "9b12758c4b8967d92d07200addb94ac12abe9244b2a208917ca854493e75cde0",
+  "manifest_file_sha256": "6c7cf16b0eb9520a503c8a9890f1a3e2086d97120be6c381cfe23e19dc3a98ac",
+  "protocol": {
+    "gold_usage": "Gold patches were consumed only after ranking for localization scoring.",
+    "retrieval_strategy": "hybrid",
+    "query_planning": true,
+    "structural_expansion": false,
+    "lexical_weight": 0.45,
+    "dense_weight": 0.55,
+    "candidate_k": 40,
+    "reranker_weight": 0.5,
+    "char_budget": 12000,
+    "top_k": 12
+  },
+  "models": {
+    "code_embedding": {
+      "name": "nomic-ai/CodeRankEmbed",
+      "revision": "3c4b60807d71f79b43f3c4363786d9493691f8b1",
+      "max_seq_length": 512,
+      "license": "MIT"
+    },
+    "cross_encoder": {
+      "name": "BAAI/bge-reranker-v2-m3",
+      "revision": "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+      "max_length": 512,
+      "license": "Apache-2.0"
+    }
+  },
+  "results": {
+    "legacy_generic_bge": {
+      "recall_at_1": 0.155556,
+      "recall_at_3": 0.277778,
+      "recall_at_5": 0.288889,
+      "hit_at_5": 0.333333,
+      "mrr": 0.238889,
+      "irrelevant_context_rate": 0.851204,
+      "mean_index_seconds": 35.065013,
+      "mean_retrieval_seconds": 27.724837
+    },
+    "coderank_only": {
+      "recall_at_1": 0.166667,
+      "recall_at_3": 0.311111,
+      "recall_at_5": 0.311111,
+      "hit_at_5": 0.333333,
+      "mrr": 0.251852,
+      "irrelevant_context_rate": 0.865619,
+      "mean_index_seconds": 36.230625,
+      "mean_retrieval_seconds": 209.684296
+    },
+    "coderank_cross_encoder": {
+      "recall_at_1": 0.222222,
+      "recall_at_3": 0.322222,
+      "recall_at_5": 0.322222,
+      "hit_at_5": 0.377778,
+      "mrr": 0.307407,
+      "irrelevant_context_rate": 0.830437,
+      "mean_index_seconds": 35.572012,
+      "mean_retrieval_seconds": 98.306437,
+      "by_difficulty": {
+        "easy": {
+          "tasks": 10,
+          "recall_at_1": 0.4,
+          "recall_at_5": 0.6,
+          "mrr": 0.5,
+          "irrelevant_context_rate": 0.828684
+        },
+        "medium": {
+          "tasks": 15,
+          "recall_at_1": 0.266667,
+          "recall_at_5": 0.366667,
+          "mrr": 0.322222,
+          "irrelevant_context_rate": 0.805702
+        },
+        "hard": {
+          "tasks": 20,
+          "recall_at_1": 0.1,
+          "recall_at_5": 0.15,
+          "mrr": 0.2,
+          "irrelevant_context_rate": 0.849865
+        }
+      }
+    }
+  },
+  "deltas": {
+    "coderank_cross_encoder_vs_legacy_generic_bge": {
+      "recall_at_1_absolute": 0.066666,
+      "recall_at_1_relative": 0.428566,
+      "recall_at_5_absolute": 0.033333,
+      "recall_at_5_relative": 0.115383,
+      "hit_at_5_absolute": 0.044445,
+      "hit_at_5_relative": 0.133335,
+      "mrr_absolute": 0.068518,
+      "mrr_relative": 0.286819,
+      "irrelevant_context_rate_absolute": -0.020767,
+      "irrelevant_context_rate_relative": -0.024397
+    },
+    "coderank_cross_encoder_vs_coderank_only": {
+      "recall_at_1_absolute": 0.055555,
+      "recall_at_1_relative": 0.333329,
+      "recall_at_5_absolute": 0.011111,
+      "recall_at_5_relative": 0.035714,
+      "hit_at_5_absolute": 0.044445,
+      "hit_at_5_relative": 0.133335,
+      "mrr_absolute": 0.055555,
+      "mrr_relative": 0.220586,
+      "irrelevant_context_rate_absolute": -0.035182,
+      "irrelevant_context_rate_relative": -0.040644
+    }
+  },
+  "paired_bootstrap": {
+    "resamples": 10000,
+    "seed": 20260802,
+    "comparison": "coderank_cross_encoder_vs_coderank_only",
+    "recall_at_1_delta_ci95": [0.0, 0.122222],
+    "recall_at_5_delta_ci95": [-0.055556, 0.066667],
+    "hit_at_5_delta_ci95": [-0.044444, 0.133333],
+    "mrr_delta_ci95": [0.007407, 0.107407],
+    "irrelevant_context_rate_delta_ci95": [-0.069125, -0.005045]
+  },
+  "raw_checkpoint_sha256": {
+    "legacy_generic_bge": "93ed26f77052978e7b5ee7e305ffd1bff145ca3fd38fd212088618d8846bb37e",
+    "coderank_only": "f92b6e27e837f29367f65114d248474e3efb67187f5dfa92f91fa90f28601075",
+    "coderank_cross_encoder": "57970e9176b81c155ed616696c16196ae6000efe2c20c824db06971a0c02aff3"
+  },
+  "runtime": {
+    "cpu": "AMD Ryzen 7 5800H (8 cores, 16 logical processors)",
+    "gpu": "NVIDIA GeForce RTX 3050 Ti Laptop GPU",
+    "torch": "2.11.0+cu128",
+    "cuda": "12.8",
+    "transformers": "4.39.3",
+    "sentence_transformers": "2.7.0",
+    "einops": "0.8.1",
+    "embedding_device": "CUDA",
+    "reranker_device": "CPU"
+  },
+  "limitations": [
+    "This is code-localization evaluation, not end-to-end patch resolution.",
+    "The public 45-task set was used during development and is not an untouched confirmatory test set.",
+    "Latency runs used different cache states and are not an apples-to-apples speed comparison.",
+    "Recall confidence intervals include zero; the stronger paired evidence is for MRR and irrelevant-context reduction."
+  ]
+}

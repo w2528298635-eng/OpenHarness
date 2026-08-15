@@ -36,6 +36,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+api = [
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.30,<1",
+]
+swebench = [
+    "datasets>=3,<5",
+    "swebench>=4,<5",
+]
 dev = [
     "pexpect>=4.9.0",
     "pytest>=8.0.0",

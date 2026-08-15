@@ -1,0 +1,9 @@
+diff --git a/app.py b/app.py
+--- a/app.py
++++ b/app.py
+@@ -1,4 +1,4 @@
+ def shipping_cost(total, vip=False):
+-    if total >= 100:
++    if vip or total >= 100:
+         return 0
+     return 10

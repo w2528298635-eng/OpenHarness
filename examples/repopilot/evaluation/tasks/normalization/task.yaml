@@ -1,0 +1,4 @@
+repo_path: repo
+issue: usernames must be stripped and lower-cased
+verify_command: [pytest, -q]
+allowed_paths: [app.py]

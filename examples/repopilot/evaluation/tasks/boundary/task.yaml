@@ -1,0 +1,5 @@
+repo_path: repo
+issue: clamp must include the upper boundary
+verify_command: [pytest, -q]
+allowed_paths: [app.py]
+retrieval: {enabled: false}

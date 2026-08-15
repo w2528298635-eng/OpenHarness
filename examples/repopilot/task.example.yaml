@@ -1,0 +1,19 @@
+repo_path: discount_bug
+issue: >
+  final_price 声明折扣率允许从 0 到 1，但传入 1（全额折扣）时抛出
+  ValueError。修复边界条件，同时保持大于 1 的折扣率仍被拒绝。
+verify_command: [python, -m, pytest, -q, test_discount.py]
+allowed_paths: [discount.py]
+retrieval:
+  enabled: true
+  strategy: hybrid
+  query_planning: true
+  structural_expansion: false
+  context_char_budget: 6000
+budgets:
+  max_phase_calls: 8
+  max_repair_attempts: 2
+  max_replan_attempts: 1
+  max_wall_seconds: 600
+  max_changed_files: 2
+  verify_timeout_seconds: 60

@@ -1,0 +1,4 @@
+repo_path: repo
+issue: parse_count should safely treat None as zero
+verify_command: [pytest, -q]
+allowed_paths: [app.py]

@@ -1,0 +1,9 @@
+diff --git a/app.py b/app.py
+--- a/app.py
++++ b/app.py
+@@ -1 +1 @@
+-from formatter import format_title
++from formatter import format_name
+@@ -5 +5 @@
+-    return format_title(name)
++    return format_name(name)

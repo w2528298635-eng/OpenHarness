@@ -13,6 +13,43 @@
 
 **OpenHarness** delivers core lightweight agent infrastructure: tool-use, skills, memory, and multi-agent coordination.
 
+This fork also includes [RepoPilot](docs/repopilot.md), a deterministic local Python bug-repair scheduler built around the OpenHarness Agent loop.
+
+RepoPilot now includes a reusable workflow runtime, bounded recovery, composite
+verification, Git worktree isolation, typed run telemetry, versioned prompts,
+planned independent lexical/dense code retrieval, revision-pinned professional code embeddings,
+candidate-bounded Cross-Encoder reranking, optional structural context expansion, a 10-task evaluation suite, a local FastAPI
+adapter, and a second read-only repository-insight workflow. See the
+[architecture](docs/repopilot-architecture.md),
+[measured evaluation](docs/repopilot-evaluation.md), and
+[resume/interview guide](docs/repopilot-resume-and-interview.md).
+
+For reproducible agent-evaluation work, RepoPilot also ships a frozen,
+leakage-safe 45-task SWE-bench Verified subset (10 easy / 15 medium / 20 hard),
+sealed inference artifacts, and a separate official-evaluator stage. The
+[pilot-v2 inference record](docs/evidence/swebench/pilot-v2-inference.md)
+documents the observed failures plus two separately evaluated scikit-learn
+calibration patches. The record deliberately limits the official result to its
+actual denominator (one task per upgraded arm) and does **not** claim broad
+benchmark resolution or RAG uplift.
+
+The retrieval upgrade is now backed by a second, zero-overlap
+[45-task fixed-stratum evaluation](docs/evidence/swebench/representative-21-20-4.md)
+(21 easy / 20 medium / 4 hard). On these new public tasks, pinned CodeRankEmbed
+plus normalized 50/50 Cross-Encoder blending raised Recall@1 from 20.56% to
+27.22%, Recall@5 from 39.44% to 45.00%, Hit@5 from 42.22% to 46.67%, and MRR
+from 0.316 to 0.369, while reducing irrelevant context from 81.90% to 79.75%.
+All paired 95% intervals still cross zero, and the candidate missed all four
+hard tasks, so this is directional evidence rather than a significance claim.
+The earlier
+[10/15/20 development stress test](docs/evidence/swebench/code-embedding-reranker-45.md)
+is retained as a separate, harder-skewed ablation record.
+A separate
+[component ablation](docs/evidence/swebench/retrieval-ablation-pilot3.md) keeps
+structural expansion opt-in because it reduced the observed ranking quality.
+These are development-set localization results, not end-to-end repair uplift or
+an official SWE-bench resolved-rate claim.
+
 **ohmo** is a personal AI agent built on OpenHarness — not another chatbot, but an assistant that actually works for you over long sessions. Chat with ohmo in Feishu / Slack / Telegram / Discord, and it forks branches, writes code, runs tests, and opens PRs on its own. ohmo runs on your existing Claude Code or Codex subscription — no extra API key needed.
 
 **Join the community**: contribute **Harness** for open agent development.
