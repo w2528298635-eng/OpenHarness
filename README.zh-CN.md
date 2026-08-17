@@ -17,8 +17,7 @@ Agent。OpenHarness 提供模型调用、工具执行等通用基础设施；Rep
 fork 的独立扩展，不是 OpenHarness 官方版本。
 
 第一次了解项目可以先看 [运行指南](docs/repopilot.md)、
-[系统架构](docs/repopilot-architecture.md)、[真实评测](docs/repopilot-evaluation.md)和
-[简历与面试材料](docs/repopilot-resume-and-interview.md)。
+[系统架构](docs/repopilot-architecture.md)和[真实评测](docs/repopilot-evaluation.md)。
 
 OpenHarness 仍然是本项目的底层 Agent Harness。其提供的轻量、可扩展、可检查的 Agent
 基础设施包括：

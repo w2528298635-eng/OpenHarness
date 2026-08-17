@@ -27,9 +27,7 @@ RepoPilot now includes a reusable workflow runtime, bounded recovery, composite
 verification, Git worktree isolation, typed run telemetry, versioned prompts,
 planned independent lexical/dense code retrieval, revision-pinned professional code embeddings,
 candidate-bounded Cross-Encoder reranking, optional structural context expansion, a 10-task evaluation suite, a local FastAPI
-adapter, and a second read-only repository-insight workflow. See the
-[resume/interview guide](docs/repopilot-resume-and-interview.md) for the concise
-project story and likely interview follow-ups.
+adapter, and a second read-only repository-insight workflow.
 
 OpenHarness remains the underlying lightweight Agent infrastructure for
 tool-use, skills, memory, and multi-agent coordination. Its original project

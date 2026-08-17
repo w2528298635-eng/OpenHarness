@@ -749,7 +749,6 @@ suites, and commit by subsystem.
 - Replace/fix: `docs/repopilot.md`
 - Create: `docs/repopilot-architecture.md`
 - Create: `docs/repopilot-evaluation.md`
-- Create: `docs/repopilot-resume-and-interview.md`
 - Modify: `examples/repopilot/README.md`
 
 **Interfaces:**
@@ -771,12 +770,6 @@ the model/tool/observation/verification loop.
 Include task taxonomy, strategies, provider/model/prompt version, repetitions,
 metrics, failures, limitations, and links to generated JSON/Markdown reports. Include
 only values produced by Task 11.
-
-- [ ] **Step 4: Write resume and interview material**
-
-Provide conservative and strong resume variants backed by repository evidence.
-Include architecture, workflow state, function calling, recovery, worktree, RAG,
-evaluation, observability, and safety questions with source pointers.
 
 - [ ] **Step 5: Verify every documented command**
 

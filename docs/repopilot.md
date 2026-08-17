@@ -252,4 +252,3 @@ run_id 查询状态、事件和产物。服务默认只允许 loopback；它是�
 
 - [分层架构与时序](repopilot-architecture.md)
 - [真实评测方法与结果](repopilot-evaluation.md)
-- [简历表述与面试问答](repopilot-resume-and-interview.md)
