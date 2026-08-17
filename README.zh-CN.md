@@ -1,11 +1,27 @@
-# <img src="assets/logo.png" alt="OpenHarness" width="40" style="vertical-align: middle;"> `oh` — OpenHarness 中文说明
+<h1 align="center"><code>RepoPilot</code></h1>
+
+<p align="center">
+  <strong>基于 OpenHarness 开发的代码修复 Agent</strong><br>
+  确定性调度 · 代码 RAG · Cross-Encoder 精排 · 失败恢复 · SWE-bench 评测
+</p>
 
 <p align="center">
   <a href="README.md"><strong>English</strong></a> ·
   <a href="README.zh-CN.md"><strong>简体中文</strong></a>
 </p>
 
-**OpenHarness** 是一个面向开源社区的 Agent Harness。它提供轻量、可扩展、可检查的 Agent 基础设施，包括：
+**RepoPilot** 是基于
+[HKUDS/OpenHarness](https://github.com/HKUDS/OpenHarness) 开源项目开发的本地代码修复
+Agent。OpenHarness 提供模型调用、工具执行等通用基础设施；RepoPilot 在此基础上增加
+确定性的修复调度、代码检索、有限次失败恢复、自动验证与可复现评测。RepoPilot 是本
+fork 的独立扩展，不是 OpenHarness 官方版本。
+
+第一次了解项目可以先看 [运行指南](docs/repopilot.md)、
+[系统架构](docs/repopilot-architecture.md)、[真实评测](docs/repopilot-evaluation.md)和
+[简历与面试材料](docs/repopilot-resume-and-interview.md)。
+
+OpenHarness 仍然是本项目的底层 Agent Harness。其提供的轻量、可扩展、可检查的 Agent
+基础设施包括：
 
 - Agent loop
 - tools / skills / plugins

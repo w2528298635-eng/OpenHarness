@@ -1,28 +1,40 @@
 <h1 align="center">
-  <img src="assets/logo.png" alt="OpenHarness" width="64" style="vertical-align: middle;">
-  &nbsp;&nbsp;
-  <img src="assets/ohmo.png" alt="ohmo" width="64" style="vertical-align: middle;">
-  <br>
-  <code>oh</code> — OpenHarness &amp; <code>ohmo</code>
+  <code>RepoPilot</code>
 </h1>
+
+<p align="center">
+  <strong>基于 OpenHarness 开发的代码修复 Agent</strong><br>
+  Deterministic scheduling · Code RAG · Cross-Encoder reranking · Recovery · SWE-bench evaluation
+</p>
 
 <p align="center">
   <a href="README.md"><strong>English</strong></a> ·
   <a href="README.zh-CN.md"><strong>简体中文</strong></a>
 </p>
 
-**OpenHarness** delivers core lightweight agent infrastructure: tool-use, skills, memory, and multi-agent coordination.
+**RepoPilot** is a local code-repair Agent developed from the
+[HKUDS/OpenHarness](https://github.com/HKUDS/OpenHarness) open-source project.
+OpenHarness supplies the model/tool runtime, while RepoPilot adds deterministic
+repair scheduling, repository retrieval, bounded recovery, verification, and
+reproducible evaluation. RepoPilot is an independent fork extension, not an
+official OpenHarness release.
 
-This fork also includes [RepoPilot](docs/repopilot.md), a deterministic local Python bug-repair scheduler built around the OpenHarness Agent loop.
+Start with the [run guide](docs/repopilot.md), inspect the
+[architecture](docs/repopilot-architecture.md), or review the
+[measured evaluation](docs/repopilot-evaluation.md).
 
 RepoPilot now includes a reusable workflow runtime, bounded recovery, composite
 verification, Git worktree isolation, typed run telemetry, versioned prompts,
 planned independent lexical/dense code retrieval, revision-pinned professional code embeddings,
 candidate-bounded Cross-Encoder reranking, optional structural context expansion, a 10-task evaluation suite, a local FastAPI
 adapter, and a second read-only repository-insight workflow. See the
-[architecture](docs/repopilot-architecture.md),
-[measured evaluation](docs/repopilot-evaluation.md), and
-[resume/interview guide](docs/repopilot-resume-and-interview.md).
+[resume/interview guide](docs/repopilot-resume-and-interview.md) for the concise
+project story and likely interview follow-ups.
+
+OpenHarness remains the underlying lightweight Agent infrastructure for
+tool-use, skills, memory, and multi-agent coordination. Its original project
+and ohmo documentation continue below, and this fork retains the upstream MIT
+license and attribution.
 
 For reproducible agent-evaluation work, RepoPilot also ships a frozen,
 leakage-safe 45-task SWE-bench Verified subset (10 easy / 15 medium / 20 hard),
